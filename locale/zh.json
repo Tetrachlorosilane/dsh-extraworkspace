@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "额外工作区",
+    "description": "为 Windows 上的 DSH 会话增加可写的额外目录。会话顶栏面板同时扩展文件工具与低完整性进程沙箱的授权范围，按会话持久化。",
+    "detail": "docs/DETAIL.md"
+  }
+}

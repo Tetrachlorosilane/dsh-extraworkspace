@@ -1,0 +1,49 @@
+{
+  "name": "@dsh-external/dsh-extraworkspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Per-session extra workspaces for DeepSeek Harness on Windows: extend the file sandbox and the low-integrity process sandbox with configurable additional directories, edited from a visual session-header panel.",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "windows",
+    "sandbox",
+    "workspace"
+  ],
+  "license": "MIT",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "src",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "AGENTS.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

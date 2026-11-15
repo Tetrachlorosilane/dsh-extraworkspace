@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Extra workspaces",
+    "description": "Add per-session writable directories for DSH on Windows. The panel in the session header extends both the harness file tools and the low-integrity process sandbox with an explicit allow-list, persisted per session.",
+    "detail": "docs/DETAIL.md"
+  }
+}
