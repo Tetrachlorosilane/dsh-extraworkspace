@@ -18,7 +18,7 @@ import { createHttpController } from './src/http.js'
 import { ExtraWorkspaceManager } from './src/manager.js'
 import { openWorkspaceStore } from './src/store.js'
 
-const HOST_VERSION = '0.1.0'
+const HOST_VERSION = '0.1.1'
 const ROUTE_PREFIX = '/dsh-extraworkspace'
 
 /** Cordis services this plugin cannot work without. */
@@ -37,6 +37,7 @@ export async function apply(ctx) {
 
   const store = await openWorkspaceStore(ctx)
   const manager = new ExtraWorkspaceManager(ctx, store)
+  await manager.loadPreferences()
   const token = randomBytes(24).toString('hex')
 
   ctx.effect(() => async () => {
@@ -75,6 +76,13 @@ export async function apply(ctx) {
   ctx.on('agent/disposed', ({ agent }) => {
     void manager.detach(agent.id).catch((error) => {
       ctx.logger?.warn?.(`dsh-extraworkspace: could not detach session ${agent.id}: ${String(error)}`)
+    })
+  })
+
+  ctx.on('workspace/session-archived', ({ sessionId }) => {
+    if (ctx.get('forgePanel') === undefined) return
+    void manager.archiveSession(sessionId).catch((error) => {
+      ctx.logger?.warn?.(`dsh-extraworkspace: archive cleanup failed for ${sessionId}: ${String(error)}`)
     })
   })
 

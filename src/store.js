@@ -17,6 +17,19 @@ import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 let schemaFactory
 try {
   const { z } = await import('zod')
+  const gitSchema = z.object({
+    repositoryRoot: z.string().min(1),
+    commonDir: z.string().min(1).nullable(),
+    gitDir: z.string().min(1).nullable(),
+    isRepositoryRoot: z.boolean().optional(),
+  }).optional()
+  const worktreeSchema = z.object({
+    id: z.string().min(1),
+    path: z.string().min(1),
+    branch: z.string().min(1),
+    baseCommit: z.string().min(1),
+    createdAt: z.number(),
+  })
   schemaFactory = () => z.object({
     sessionId: z.string().min(1),
     roots: z.array(z.object({
@@ -25,6 +38,9 @@ try {
       label: z.string().max(200).optional(),
       enabled: z.boolean(),
       addedAt: z.number(),
+      kind: z.enum(['directory', 'git-repo', 'git-worktree']).optional(),
+      git: gitSchema,
+      worktrees: z.array(worktreeSchema).max(64).optional(),
     })).max(64),
   })
 } catch {
@@ -44,8 +60,38 @@ try {
   })
 }
 
+let preferenceSchemaFactory
+try {
+  const { z } = await import('zod')
+  preferenceSchemaFactory = () => z.object({
+    id: z.string().min(1),
+    retainWorktreesOnArchive: z.boolean(),
+  })
+} catch {
+  preferenceSchemaFactory = () => ({
+    parse(value) {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('extra-workspaces preference record must be an object')
+      }
+      if (typeof value.id !== 'string' || value.id === '') throw new Error('preference id is required')
+      if (typeof value.retainWorktreesOnArchive !== 'boolean') throw new Error('retainWorktreesOnArchive must be a boolean')
+      return value
+    },
+  })
+}
+
 /** Current storage format version. Bump only with a compatible reader. */
 export const STORAGE_VERSION = 1
+
+export const extraWorkspacePreferenceDomain = defineDomain({
+  name: 'extra_workspaces_preferences',
+  version: 1,
+  layout: 'per-record',
+  invalidRecords: 'backup-and-skip',
+  tables: {
+    preferences: domainTable(preferenceSchemaFactory()),
+  },
+})
 
 export const extraWorkspaceDomain = defineDomain({
   name: 'extra_workspaces',
@@ -65,6 +111,7 @@ export const extraWorkspaceDomain = defineDomain({
  */
 function memoryStore() {
   const records = new Map()
+  const preferences = new Map()
   return {
     persistent: false,
     async get(sessionId) {
@@ -73,8 +120,15 @@ function memoryStore() {
     async put(record) {
       records.set(record.sessionId, record)
     },
+    async getPreferences() {
+      return preferences.get('global')
+    },
+    async putPreferences(record) {
+      preferences.set('global', record)
+    },
     async close() {
       records.clear()
+      preferences.clear()
     },
   }
 }
@@ -96,6 +150,15 @@ export async function openWorkspaceStore(ctx) {
   try {
     const domain = await facility.open(extraWorkspaceDomain)
     const table = domain.table('sessions')
+    const memoryPreferences = new Map()
+    let preferenceDomain
+    let preferenceTable
+    try {
+      preferenceDomain = await facility.open(extraWorkspacePreferenceDomain)
+      preferenceTable = preferenceDomain.table('preferences')
+    } catch (error) {
+      ctx.logger?.warn?.(`dsh-extraworkspace: cannot open the preference domain; the archive switch will not persist: ${String(error)}`)
+    }
     return {
       persistent: true,
       async get(sessionId) {
@@ -104,7 +167,15 @@ export async function openWorkspaceStore(ctx) {
       async put(record) {
         await table.put(record.sessionId, record)
       },
+      async getPreferences() {
+        return preferenceTable === undefined ? memoryPreferences.get('global') : preferenceTable.get('global')
+      },
+      async putPreferences(record) {
+        if (preferenceTable === undefined) memoryPreferences.set('global', record)
+        else await preferenceTable.put('global', record)
+      },
       async close() {
+        await preferenceDomain?.close()
         await domain.close()
       },
     }

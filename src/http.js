@@ -11,6 +11,7 @@
 
 import { timingSafeEqual } from 'node:crypto'
 import { messageOf, WorkspacePathError } from './paths.js'
+import { ForgeCommandError } from './forge/run.js'
 import {
   PermissionRepairError,
   SessionNotFoundError,
@@ -212,6 +213,29 @@ export function createHttpController({ ctx, manager, token, version }) {
         sendJson(res, 200, await manager.repairPermissions(sessionId, id))
         return
       }
+      if (route === '/set-retain-worktrees') {
+        if (typeof body.retain !== 'boolean') throw new HttpError(400, 'INVALID_ARGUMENT', 'retain must be a boolean.')
+        await manager.setRetainWorktreesOnArchive(body.retain)
+        sendJson(res, 200, manager.publicState(sessionId))
+        return
+      }
+
+      if (route === '/add-worktree') {
+        const entryId = requiredString(body, 'entryId')
+        const request = {
+          ...typeof body.name === 'string' ? { name: body.name } : {},
+          ...typeof body.from === 'string' ? { from: body.from } : {},
+        }
+        sendJson(res, 200, await manager.addWorktree(sessionId, entryId, request))
+        return
+      }
+
+      if (route === '/remove-worktree') {
+        const entryId = requiredString(body, 'entryId')
+        const worktreeId = requiredString(body, 'worktreeId')
+        sendJson(res, 200, await manager.removeWorktree(sessionId, entryId, worktreeId))
+        return
+      }
 
       throw new HttpError(404, 'NOT_FOUND', 'Unknown route.')
     } catch (error) {
@@ -230,6 +254,14 @@ export function createHttpController({ ctx, manager, token, version }) {
       }
       if (error instanceof PermissionRepairError) {
         sendJson(res, 400, { error: error.message, code: error.code })
+        return
+      }
+      if (error instanceof ForgeCommandError) {
+        const status = error.code === 'FORGE_UNAVAILABLE' ? 503
+          : error.code === 'WORKTREE_EXISTS' || error.code === 'WORKTREE_BRANCH_EXISTS' ? 409
+            : error.code === 'FORGE_READ_ONLY' ? 403
+              : 400
+        sendJson(res, status, { error: error.message, code: error.code })
         return
       }
       if (error instanceof WorkspaceEntryNotFoundError) {

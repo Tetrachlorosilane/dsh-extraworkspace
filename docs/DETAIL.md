@@ -68,6 +68,24 @@ workspace is refused.
 - Forked and subagent sessions are new sessions: configure their own list.
   Resumed sessions restore their saved list.
 
+## Forge companion (optional)
+
+When `@deepseek-ai/dsh-experimental-forge-bundle` is enabled, an
+**Extra workspaces** tab is added to the same right-sidebar tab strip as
+Forge. Forge keeps the root workspace; this tab manages extra roots.
+
+- Each extra root shows its detected kind, branch/HEAD, dirty count,
+  ahead/behind, and worktrees.
+- A repository root can create a worktree under
+  `<repo>/.agents/worktrees/<name>` without changing the Session working
+  directory. Remove uses a non-force `git worktree remove` and keeps the
+  branch; dirty or locked checkouts are refused.
+- **Keep extra worktrees when archiving** is off by default, matching Forge's
+  archive cleanup. Unless enabled, archiving removes clean, unlocked,
+  unreferenced worktrees created here and keeps their branches.
+- The tab and these routes are unavailable when Forge is disabled. No new
+  model tools are added.
+
 ## Troubleshooting
 
 - **Processes error / Win32 5**: the directory's DACL does not grant your

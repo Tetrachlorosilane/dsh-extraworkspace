@@ -10,9 +10,11 @@
 
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { canonicalPath } from '@deepseek-ai/dsh-sandbox'
 import { AclGrantManager, grantCurrentUserFullControl } from './acl.js'
 import { inspectGit } from './forge/git.js'
+import { createWorktree, removeWorktree } from './forge/worktree.js'
 import { messageOf, resolveWorkspaceInput, WorkspacePathError } from './paths.js'
 
 /** A session id that no live Session owns. */
@@ -56,6 +58,53 @@ export class PermissionRepairError extends Error {
  * @param {unknown} value - raw label.
  * @returns {string} a safe label, possibly empty.
  */
+function cleanKind(value) {
+  return value === 'git-repo' || value === 'git-worktree' || value === 'directory' ? value : undefined
+}
+
+/**
+ * Rebuild the persisted Git identity of one extra root.
+ * @param {unknown} value - raw Git record.
+ * @returns {{ repositoryRoot: string, commonDir: string | null, gitDir: string | null, isRepositoryRoot?: boolean } | undefined} normalized Git record.
+ */
+function cleanGit(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  if (typeof value.repositoryRoot !== 'string' || value.repositoryRoot === '') return undefined
+  return {
+    repositoryRoot: value.repositoryRoot,
+    commonDir: typeof value.commonDir === 'string' && value.commonDir !== '' ? value.commonDir : null,
+    gitDir: typeof value.gitDir === 'string' && value.gitDir !== '' ? value.gitDir : null,
+    ...typeof value.isRepositoryRoot === 'boolean' ? { isRepositoryRoot: value.isRepositoryRoot } : {},
+  }
+}
+
+/**
+ * Rebuild the persisted worktree records of one extra root.
+ * @param {unknown} value - raw worktree list.
+ * @returns {Array<object>} valid worktree records.
+ */
+function cleanWorktrees(value) {
+  if (!Array.isArray(value)) return []
+  const result = []
+  const seen = new Set()
+  for (const candidate of value.slice(0, 64)) {
+    if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) continue
+    if (typeof candidate.id !== 'string' || candidate.id === '' || seen.has(candidate.id)) continue
+    if (typeof candidate.path !== 'string' || candidate.path === '') continue
+    if (typeof candidate.branch !== 'string' || candidate.branch === '') continue
+    if (typeof candidate.baseCommit !== 'string' || candidate.baseCommit === '') continue
+    seen.add(candidate.id)
+    result.push({
+      id: candidate.id,
+      path: candidate.path,
+      branch: candidate.branch,
+      baseCommit: candidate.baseCommit,
+      createdAt: typeof candidate.createdAt === 'number' && Number.isFinite(candidate.createdAt) ? candidate.createdAt : Date.now(),
+    })
+  }
+  return result
+}
+
 function cleanLabel(value) {
   if (typeof value !== 'string') return ''
   return value.replace(/[\u0000-\u001f\u007f]/gu, '').trim().slice(0, 200)
@@ -91,6 +140,9 @@ function normalizeRecord(sessionId, record) {
       label: cleanLabel(candidate.label),
       enabled: candidate.enabled !== false,
       addedAt: typeof candidate.addedAt === 'number' && Number.isFinite(candidate.addedAt) ? candidate.addedAt : Date.now(),
+      ...cleanKind(candidate.kind) === undefined ? {} : { kind: cleanKind(candidate.kind) },
+      ...cleanGit(candidate.git) === undefined ? {} : { git: cleanGit(candidate.git) },
+      ...Array.isArray(candidate.worktrees) && candidate.worktrees.length > 0 ? { worktrees: cleanWorktrees(candidate.worktrees) } : {},
     })
   }
   return { sessionId, roots }
@@ -118,7 +170,37 @@ export class ExtraWorkspaceManager {
     this.acl = new AclGrantManager(ctx.logger)
     /** @type {Map<string, SessionState>} */
     this.states = new Map()
+    /** @type {Map<string, Promise<unknown>>} */
+    this.repoLocks = new Map()
     this.closed = false
+    this.retainWorktreesOnArchive = false
+  }
+
+  /**
+   * Load the persisted archive preference. The default is false, matching
+   * Forge's retainOnArchive default: archive reclaims plugin-created worktrees.
+   * @returns {Promise<void>} resolution after the best-effort read.
+   */
+  async loadPreferences() {
+    try {
+      const preferences = await this.store.getPreferences()
+      this.retainWorktreesOnArchive = preferences?.retainWorktreesOnArchive === true
+    } catch (error) {
+      this.ctx.logger?.warn?.(`dsh-extraworkspace: cannot read the archive preference: ${String(error)}`)
+    }
+  }
+
+  /**
+   * Persist the archive preference and update the public state.
+   * @param {boolean} retain - whether archived sessions keep extra worktrees.
+   * @returns {Promise<void>} resolution after persistence.
+   */
+  async setRetainWorktreesOnArchive(retain) {
+    if (this.ctx.get('forgePanel') === undefined) {
+      throw new WorkspacePathError('FORGE_DISABLED', 'The forge bundle is not active; extra-worktree settings are unavailable.')
+    }
+    this.retainWorktreesOnArchive = retain === true
+    await this.store.putPreferences({ id: 'global', retainWorktreesOnArchive: this.retainWorktreesOnArchive })
   }
 
   /**
@@ -175,6 +257,26 @@ export class ExtraWorkspaceManager {
    */
   async attachById(sessionId) {
     return this.attach(this.requireSession(sessionId))
+  }
+
+  /**
+   * Serialize worktree mutations across sessions that share one repository.
+   * The session chain already orders one Session; this lock orders the shared
+   * Git metadata directory across Sessions.
+   * @template T
+   * @param {string} key - canonical common Git directory or repository root.
+   * @param {() => Promise<T>} operation - mutation to run at its slot.
+   * @returns {Promise<T>} the operation's result.
+   */
+  #withRepoLock(key, operation) {
+    const previous = this.repoLocks.get(key) ?? Promise.resolve()
+    const run = previous.then(operation, operation)
+    const tail = run.then(() => undefined, () => undefined)
+    this.repoLocks.set(key, tail)
+    void tail.finally(() => {
+      if (this.repoLocks.get(key) === tail) this.repoLocks.delete(key)
+    })
+    return run
   }
 
   /**
@@ -529,6 +631,72 @@ export class ExtraWorkspaceManager {
   }
 
   /**
+   * Reclaim plugin-created extra worktrees when their Session is archived.
+   * Only clean, registered, unlocked checkouts are removed; the branch and its
+   * commits stay. The default is auto-clean, matching Forge's retainOnArchive
+   * default; the tab switch turns it off.
+   * @param {string} sessionId - archived Session id.
+   * @returns {Promise<void>} resolution after the best-effort cleanup.
+   */
+  async archiveSession(sessionId) {
+    if (this.retainWorktreesOnArchive) return
+    if (this.ctx.get('forgePanel') === undefined) return
+    const session = this.ctx.sessions.get(sessionId)
+    if (session === undefined) return
+    const state = this.states.get(sessionId)
+    if (state === undefined) return
+    const cleanup = this.#enqueue(state, async () => {
+      let changed = false
+      for (const record of state.record.roots) {
+        if (record.kind !== 'git-repo' || record.git?.isRepositoryRoot !== true) continue
+        if (state.applied.get(record.id)?.status.processes !== 'active') continue
+        const remaining = []
+        for (const worktree of record.worktrees ?? []) {
+          const usedElsewhere = [...this.states.entries()].some(([otherId, other]) =>
+            otherId !== sessionId && other.record.roots.some((otherRoot) =>
+              (otherRoot.worktrees ?? []).some((otherWorktree) => path.win32.normalize(otherWorktree.path).toLowerCase() === path.win32.normalize(worktree.path).toLowerCase())))
+          if (usedElsewhere) {
+            remaining.push(worktree)
+            continue
+          }
+          if (!existsSync(worktree.path)) {
+            changed = true
+            continue
+          }
+          try {
+            const inspection = await inspectGit(worktree.path)
+            const normalized = path.win32.normalize(worktree.path).toLowerCase()
+            const listed = (inspection.worktrees ?? []).find((entry) => path.win32.normalize(entry.path).toLowerCase() === normalized)
+            if (inspection.error != null || inspection.dirty !== 0 || listed?.locked) {
+              remaining.push(worktree)
+              continue
+            }
+            await this.#withRepoLock(record.git.commonDir ?? record.git.repositoryRoot, () => removeWorktree({
+              ctx: this.ctx,
+              session,
+              repositoryRoot: record.git.repositoryRoot,
+              path: worktree.path,
+            }))
+            changed = true
+          } catch (error) {
+            this.ctx.logger?.warn?.(`dsh-extraworkspace: archive cleanup kept ${worktree.path}: ${String(error)}`)
+            remaining.push(worktree)
+          }
+        }
+        if ((record.worktrees ?? []).length !== remaining.length) {
+          record.worktrees = remaining
+          changed = true
+        }
+      }
+      if (changed) await this.store.put(state.record)
+    })
+    state.archiveCleanup = cleanup.catch((error) => {
+      this.ctx.logger?.warn?.(`dsh-extraworkspace: archive cleanup failed for ${sessionId}: ${String(error)}`)
+    })
+    await state.archiveCleanup
+  }
+
+  /**
    * Re-inspect the Git state of every enabled extra workspace. This is a
    * read-only Host operation; it is only offered when the forge companion is
    * mounted, because the companion tab is the only consumer.
@@ -540,18 +708,159 @@ export class ExtraWorkspaceManager {
     const state = await this.attach(session)
     if (this.ctx.get('forgePanel') === undefined) return this.publicState(sessionId)
     return this.#enqueue(state, async () => {
+      let changed = false
       for (const record of state.record.roots) {
         if (!record.enabled) {
           state.gitStatus.delete(record.id)
           continue
         }
         try {
-          state.gitStatus.set(record.id, await inspectGit(record.path))
+          const inspection = await inspectGit(record.path)
+          state.gitStatus.set(record.id, inspection)
+          if (inspection.kind === 'git-repo' || inspection.kind === 'git-worktree') {
+            const git = {
+              repositoryRoot: inspection.repositoryRoot,
+              commonDir: inspection.commonDir,
+              gitDir: inspection.gitDir,
+              isRepositoryRoot: inspection.isRepositoryRoot === true,
+            }
+            if (record.kind !== inspection.kind || JSON.stringify(record.git) !== JSON.stringify(git)) {
+              record.kind = inspection.kind
+              record.git = git
+              changed = true
+            }
+          } else if (record.kind !== 'directory' || record.git !== undefined) {
+            record.kind = 'directory'
+            delete record.git
+            changed = true
+          }
         } catch (error) {
           state.gitStatus.set(record.id, { kind: 'directory', error: messageOf(error) })
         }
       }
+      if (changed) await this.store.put(state.record)
       state.gitCheckedAt = Date.now()
+      return this.publicState(sessionId)
+    })
+  }
+
+  /**
+   * Re-read one entry's Git state after a worktree mutation so the response
+   * shows the new checkout immediately.
+   * @param {object} state - attached session state.
+   * @param {object} record - extra workspace record.
+   * @returns {Promise<void>} resolution after the best-effort inspection.
+   */
+  async #inspectOne(state, record) {
+    try {
+      state.gitStatus.set(record.id, await inspectGit(record.path))
+    } catch (error) {
+      state.gitStatus.set(record.id, { kind: 'directory', error: messageOf(error) })
+    }
+    state.gitCheckedAt = Date.now()
+  }
+
+  /**
+   * Resolve one extra entry that is an actual Git repository root and whose
+   * process grant is active. Worktrees are only created for repository roots:
+   * a linked-worktree entry's common Git directory is a separate grant, and a
+   * subdirectory entry does not own the shared metadata.
+   * @param {object} state - attached session state.
+   * @param {string} entryId - extra workspace id.
+   * @returns {{ record: object }} the validated entry.
+   * @throws {WorkspacePathError|WorkspaceEntryNotFoundError} when the entry cannot host a worktree.
+   */
+  #worktreeEntry(state, entryId) {
+    const record = state.record.roots.find((root) => root.id === entryId)
+    if (record === undefined) throw new WorkspaceEntryNotFoundError(entryId)
+    if (!record.enabled) throw new WorkspacePathError('DISABLED', 'Enable the entry before creating a worktree.')
+    if (record.kind !== 'git-repo') {
+      throw new WorkspacePathError(
+        'WORKTREE_NOT_REPO',
+        'Worktrees can be created only for an extra workspace that is a Git repository root. Add the repository root instead of a subdirectory or linked worktree.',
+      )
+    }
+    if (record.git?.isRepositoryRoot !== true) {
+      throw new WorkspacePathError(
+        'WORKTREE_NOT_REPO_ROOT',
+        'The extra workspace is inside a Git repository but is not its root. Add the repository root to create worktrees.',
+      )
+    }
+    const applied = state.applied.get(record.id)
+    if (applied?.status.processes !== 'active') {
+      throw new WorkspacePathError(
+        'WORKTREE_PERMISSION',
+        'The extra repository needs an active Windows process grant before a worktree can be created. Use Retry or Fix permissions.',
+      )
+    }
+    return { record }
+  }
+
+  /**
+   * Create an extra worktree without changing the Session working directory.
+   * @param {string} sessionId - live session identity.
+   * @param {string} entryId - extra repository entry id.
+   * @param {{ name?: string, from?: string }} request - branch/directory name and local base revision.
+   * @returns {Promise<object>} the updated public state.
+   */
+  async addWorktree(sessionId, entryId, request = {}) {
+    if (this.ctx.get('forgePanel') === undefined) {
+      throw new WorkspacePathError('FORGE_DISABLED', 'The forge bundle is not active; extra-worktree management is unavailable.')
+    }
+    const session = this.requireSession(sessionId)
+    await this.refreshGit(sessionId)
+    const state = await this.attach(session)
+    return this.#enqueue(state, async () => {
+      const { record } = this.#worktreeEntry(state, entryId)
+      if ((record.worktrees ?? []).length >= 64) {
+        throw new WorkspacePathError('LIMIT_REACHED', 'An extra repository can record at most 64 worktrees.')
+      }
+      const created = await this.#withRepoLock(record.git.commonDir ?? record.git.repositoryRoot, () => createWorktree({
+        ctx: this.ctx,
+        session,
+        repositoryRoot: record.git.repositoryRoot,
+        name: typeof request.name === 'string' ? request.name : undefined,
+        from: typeof request.from === 'string' ? request.from : undefined,
+      }))
+      record.worktrees = [...(record.worktrees ?? []), created]
+      await this.store.put(state.record)
+      await this.#inspectOne(state, record)
+      return this.publicState(sessionId)
+    })
+  }
+
+  /**
+   * Remove one worktree created by this plugin without force. The branch and
+   * its commits stay; dirty, locked, or missing checkouts are refused by Git.
+   * @param {string} sessionId - live session identity.
+   * @param {string} entryId - extra repository entry id.
+   * @param {string} worktreeId - persisted worktree record id.
+   * @returns {Promise<object>} the updated public state.
+   */
+  async removeWorktree(sessionId, entryId, worktreeId) {
+    if (this.ctx.get('forgePanel') === undefined) {
+      throw new WorkspacePathError('FORGE_DISABLED', 'The forge bundle is not active; extra-worktree management is unavailable.')
+    }
+    const session = this.requireSession(sessionId)
+    const state = await this.attach(session)
+    return this.#enqueue(state, async () => {
+      const { record } = this.#worktreeEntry(state, entryId)
+      const worktrees = record.worktrees ?? []
+      const worktree = worktrees.find((candidate) => candidate.id === worktreeId)
+      if (worktree === undefined) throw new WorkspaceEntryNotFoundError(worktreeId)
+      const relative = path.relative(record.path, worktree.path).split(path.sep).join('/')
+      if (path.isAbsolute(relative) || relative === '' || relative.startsWith('../') || !relative.startsWith('.agents/worktrees/')) {
+        throw new WorkspacePathError('WORKTREE_PATH_INVALID', `The worktree is not inside the configured pool: ${worktree.path}`)
+      }
+      await this.#withRepoLock(record.git.commonDir ?? record.git.repositoryRoot, () => removeWorktree({
+        ctx: this.ctx,
+        session,
+        repositoryRoot: record.git.repositoryRoot,
+        path: worktree.path,
+      }))
+      record.worktrees = worktrees.filter((candidate) => candidate.id !== worktreeId)
+      await this.store.put(state.record)
+      await this.#inspectOne(state, record)
       return this.publicState(sessionId)
     })
   }
@@ -575,6 +884,28 @@ export class ExtraWorkspaceManager {
         processes: record.enabled ? (process.platform === 'win32' ? 'inactive' : 'unsupported') : 'inactive',
         warnings: [],
       }
+      const inspection = state.gitStatus.get(record.id) ?? null
+      const pathKey = (value) => path.win32.normalize(value).toLowerCase()
+      const listed = new Map((inspection?.worktrees ?? []).map((worktree) => [pathKey(worktree.path), worktree]))
+      const worktrees = (record.worktrees ?? []).map((worktree) => {
+        const existsWorktree = existsSync(worktree.path)
+        const entry = listed.get(pathKey(worktree.path))
+        const stateValue = !existsWorktree
+          ? 'missing'
+          : entry?.locked
+            ? 'locked'
+            : entry === undefined
+              ? 'unregistered'
+              : 'present'
+        return {
+          id: worktree.id,
+          path: worktree.path,
+          branch: worktree.branch,
+          baseCommit: worktree.baseCommit,
+          createdAt: worktree.createdAt,
+          state: stateValue,
+        }
+      })
       return {
         id: record.id,
         path: record.path,
@@ -582,8 +913,9 @@ export class ExtraWorkspaceManager {
         enabled: record.enabled,
         addedAt: record.addedAt,
         exists,
-        kind: state.gitStatus.get(record.id)?.kind ?? 'directory',
-        git: state.gitStatus.get(record.id) ?? null,
+        kind: inspection?.kind ?? record.kind ?? 'directory',
+        git: inspection,
+        worktrees,
         status: {
           state: exists ? status.state : (record.enabled ? 'missing' : 'disabled'),
           fileTools: exists ? status.fileTools : 'inactive',
@@ -605,6 +937,7 @@ export class ExtraWorkspaceManager {
       roots,
       enabledCount: roots.filter((root) => root.enabled).length,
       forge: this.ctx.get('forgePanel') !== undefined,
+      retainWorktreesOnArchive: this.retainWorktreesOnArchive,
       gitCheckedAt: state.gitCheckedAt > 0 ? state.gitCheckedAt : null,
     }
   }
@@ -639,6 +972,7 @@ export class ExtraWorkspaceManager {
   async detach(sessionId) {
     const state = this.states.get(sessionId)
     if (state === undefined) return
+    if (state.archiveCleanup !== undefined) await state.archiveCleanup
     await state.chain
     for (const applied of state.applied.values()) {
       await this.#disposeApplied(applied)

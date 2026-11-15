@@ -126,6 +126,27 @@ window.__ModuleLoader__.load({
       forgeTabWorktrees: '{count} worktrees',
       forgeTabForgeOff: 'Forge is not active; this tab is unavailable.',
       forgeTabChecked: 'Checked {time}',
+      forgeTabAddWorktree: 'Add worktree',
+      forgeTabName: 'Branch / directory',
+      forgeTabNamePlaceholder: 'fix-login',
+      forgeTabFrom: 'Base (local)',
+      forgeTabFromPlaceholder: 'HEAD',
+      forgeTabCreate: 'Create',
+      forgeTabCreating: 'Creating…',
+      forgeTabCancel: 'Cancel',
+      forgeTabRemove: 'Remove',
+      forgeTabConfirmRemove: 'Confirm remove',
+      forgeTabWorktreeAdded: 'Created {path}.',
+      forgeTabWorktreeRemoved: 'Removed {path}.',
+      forgeTabActionFailed: 'Action failed: {error}',
+      forgeTabOnlyRepoRoot: 'Add the repository root to create worktrees.',
+      forgeTabManagedWorktrees: 'Worktrees created here',
+      forgeTabNoWorktrees: 'No worktrees created here yet.',
+      forgeTabMissing: 'missing',
+      forgeTabLocked: 'locked',
+      forgeTabUnregistered: 'unregistered',
+      forgeTabRetain: 'Keep extra worktrees when archiving',
+      forgeTabRetainHint: 'Off (default): archiving removes clean, unlocked worktrees this plugin created, keeping their branches. On: every extra worktree is kept.',
     }
 
     const ZH = {
@@ -239,6 +260,27 @@ window.__ModuleLoader__.load({
       forgeTabWorktrees: '{count} 个工作树',
       forgeTabForgeOff: 'Forge 未启用，此标签不可用。',
       forgeTabChecked: '检查于 {time}',
+      forgeTabAddWorktree: '新建工作树',
+      forgeTabName: '分支 / 目录',
+      forgeTabNamePlaceholder: 'fix-login',
+      forgeTabFrom: '起点（本地）',
+      forgeTabFromPlaceholder: 'HEAD',
+      forgeTabCreate: '创建',
+      forgeTabCreating: '创建中…',
+      forgeTabCancel: '取消',
+      forgeTabRemove: '移除',
+      forgeTabConfirmRemove: '确认移除',
+      forgeTabWorktreeAdded: '已创建 {path}。',
+      forgeTabWorktreeRemoved: '已移除 {path}。',
+      forgeTabActionFailed: '操作失败：{error}',
+      forgeTabOnlyRepoRoot: '请添加仓库根目录以创建工作树。',
+      forgeTabManagedWorktrees: '在此创建的工作树',
+      forgeTabNoWorktrees: '尚未在此创建工作树。',
+      forgeTabMissing: '缺失',
+      forgeTabLocked: '已锁定',
+      forgeTabUnregistered: '未登记',
+      forgeTabRetain: '归档时保留额外工作树',
+      forgeTabRetainHint: '关闭（默认）：归档会移除此插件创建的干净、未锁定工作树，保留分支。开启：保留所有额外工作树。',
     }
 
     const CSS = String.raw`
@@ -759,9 +801,46 @@ window.__ModuleLoader__.load({
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dsh-xw-tab-note {
-  color: var(--dsw-alias-label-tertiary);
+.dsh-xw-tab-actions {
+  display: flex;
+  gap: 6px;
+}
+.dsh-xw-tab-form {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+.dsh-xw-tab-managed {
+  display: grid;
+  gap: 2px;
+}
+.dsh-xw-tab-inline-btn {
+  margin-inline-start: 8px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-state-error-primary);
+  cursor: pointer;
+  font: inherit;
   font-size: 10px;
+}
+.dsh-xw-tab-inline-btn:hover {
+  background: var(--dsw-alias-bg-layer-2);
+}
+.dsh-xw-tab-retain {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.dsh-xw-tab-retain input {
+  margin-top: 2px;
 }
 `
 
@@ -1064,6 +1143,13 @@ window.__ModuleLoader__.load({
       const [state, setState] = React.useState(null)
       const [loading, setLoading] = React.useState(false)
       const [error, setError] = React.useState('')
+      const [notice, setNotice] = React.useState('')
+      const [actionError, setActionError] = React.useState('')
+      const [busy, setBusy] = React.useState('')
+      const [formFor, setFormFor] = React.useState('')
+      const [name, setName] = React.useState('')
+      const [from, setFrom] = React.useState('')
+      const [confirmRemove, setConfirmRemove] = React.useState('')
       const load = React.useCallback(async (refresh) => {
         if (sessionId === undefined || sessionId === null) return
         setLoading(true)
@@ -1084,13 +1170,79 @@ window.__ModuleLoader__.load({
         return h('div', { className: 'dsh-xw-tab' }, h('div', { className: 'dsh-xw-empty' }, t('sessionMissing')))
       }
       const roots = state?.roots ?? []
+      const createWorktree = async (root) => {
+        setBusy('create:' + root.id)
+        setActionError('')
+        setNotice('')
+        try {
+          const next = await request('/add-worktree', {
+            method: 'POST',
+            body: {
+              sessionId,
+              entryId: root.id,
+              ...name.trim() === '' ? {} : { name: name.trim() },
+              ...from.trim() === '' ? {} : { from: from.trim() },
+            },
+          })
+          setState(next)
+          const created = next.roots.find((candidate) => candidate.id === root.id)?.worktrees?.slice(-1)[0]
+          setNotice(t('forgeTabWorktreeAdded', { path: created?.path ?? '' }))
+          setFormFor('')
+          setName('')
+          setFrom('')
+        } catch (createError) {
+          setActionError(t('forgeTabActionFailed', { error: hostErrorText(createError, t) }))
+        } finally {
+          setBusy('')
+        }
+      }
+      const removeWorktree = async (root, worktree) => {
+        if (confirmRemove !== worktree.id) {
+          setConfirmRemove(worktree.id)
+          return
+        }
+        setBusy('remove:' + worktree.id)
+        setActionError('')
+        setNotice('')
+        try {
+          const next = await request('/remove-worktree', {
+            method: 'POST',
+            body: { sessionId, entryId: root.id, worktreeId: worktree.id },
+          })
+          setState(next)
+          setNotice(t('forgeTabWorktreeRemoved', { path: worktree.path }))
+          setConfirmRemove('')
+        } catch (removeError) {
+          setActionError(t('forgeTabActionFailed', { error: hostErrorText(removeError, t) }))
+          setConfirmRemove('')
+        } finally {
+          setBusy('')
+        }
+      }
+      const canCreate = (root) => root.enabled && root.kind === 'git-repo' && root.git?.isRepositoryRoot === true
+      const setRetain = async (checked) => {
+        setBusy('retain')
+        setActionError('')
+        setNotice('')
+        try {
+          const next = await request('/set-retain-worktrees', {
+            method: 'POST',
+            body: { sessionId, retain: checked },
+          })
+          setState(next)
+        } catch (retainError) {
+          setActionError(t('forgeTabActionFailed', { error: hostErrorText(retainError, t) }))
+        } finally {
+          setBusy('')
+        }
+      }
       return h('div', { className: 'dsh-xw-tab' },
         h('div', { className: 'dsh-xw-tab-head' },
           h('h2', { className: 'dsh-xw-tab-title' }, t('forgeTabTitle')),
           h('button', {
             type: 'button',
             className: 'dsh-xw-btn',
-            disabled: loading,
+            disabled: loading || busy !== '',
             onClick: () => { void load(true) },
           }, h(IconRefresh, null), t('forgeTabRefresh'))),
         h('p', { className: 'dsh-xw-tab-intro' }, t('forgeTabIntro')),
@@ -1112,10 +1264,76 @@ window.__ModuleLoader__.load({
                 h('div', { className: 'dsh-xw-tab-path', title: root.path }, root.path),
                 h('div', { className: 'dsh-xw-tab-meta' }, h(GitFacts, { root, t })),
                 root.git?.error ? h('div', { className: 'dsh-xw-error' }, root.git.error) : null,
-                Array.isArray(root.git?.worktrees) && root.git.worktrees.length > 0
-                  ? h('ul', { className: 'dsh-xw-tab-worktrees' }, ...root.git.worktrees.map((worktree) => h('li', { key: worktree.path, title: worktree.path }, (worktree.branch || worktree.head || '') + '  ' + worktree.path)))
-                  : null)),
+                canCreate(root)
+                  ? (formFor === root.id
+                    ? h('div', { className: 'dsh-xw-tab-form' },
+                      h('label', { className: 'dsh-xw-field' },
+                        h('span', { className: 'dsh-xw-field-label' }, t('forgeTabName')),
+                        h('input', {
+                          className: 'dsh-xw-input dsh-xw-mono',
+                          value: name,
+                          placeholder: t('forgeTabNamePlaceholder'),
+                          spellCheck: false,
+                          disabled: busy !== '',
+                          onChange: (event) => setName(event.target.value),
+                        })),
+                      h('label', { className: 'dsh-xw-field' },
+                        h('span', { className: 'dsh-xw-field-label' }, t('forgeTabFrom')),
+                        h('input', {
+                          className: 'dsh-xw-input dsh-xw-mono',
+                          value: from,
+                          placeholder: t('forgeTabFromPlaceholder'),
+                          spellCheck: false,
+                          disabled: busy !== '',
+                          onChange: (event) => setFrom(event.target.value),
+                        })),
+                      h('div', { className: 'dsh-xw-form-actions' },
+                        h('button', {
+                          type: 'button',
+                          className: 'dsh-xw-btn dsh-xw-btn-primary',
+                          disabled: busy !== '',
+                          onClick: () => { void createWorktree(root) },
+                        }, busy === 'create:' + root.id ? t('forgeTabCreating') : t('forgeTabCreate')),
+                        h('button', {
+                          type: 'button',
+                          className: 'dsh-xw-btn',
+                          disabled: busy !== '',
+                          onClick: () => { setFormFor(''); setName(''); setFrom('') },
+                        }, t('forgeTabCancel'))))
+                    : h('div', { className: 'dsh-xw-tab-actions' },
+                      h('button', {
+                        type: 'button',
+                        className: 'dsh-xw-btn',
+                        disabled: busy !== '',
+                        onClick: () => { setFormFor(root.id); setName(''); setFrom(''); setActionError('') },
+                      }, h(IconPlus, null), t('forgeTabAddWorktree'))))
+                  : root.kind === 'git-repo' || root.kind === 'git-worktree'
+                    ? h('div', { className: 'dsh-xw-tab-note' }, t('forgeTabOnlyRepoRoot'))
+                    : null,
+                Array.isArray(root.worktrees) && root.worktrees.length > 0
+                  ? h('div', { className: 'dsh-xw-tab-managed' },
+                    h('div', { className: 'dsh-xw-tab-note' }, t('forgeTabManagedWorktrees')),
+                    h('ul', { className: 'dsh-xw-tab-worktrees' },
+                      ...root.worktrees.map((worktree) => h('li', { key: worktree.id, title: worktree.path },
+                        h('span', null, (worktree.branch || '') + '  ' + worktree.path + '  [' + worktree.state + ']'),
+                        h('button', {
+                          type: 'button',
+                          className: 'dsh-xw-tab-inline-btn',
+                          disabled: busy !== '',
+                          onClick: () => { void removeWorktree(root, worktree) },
+                        }, confirmRemove === worktree.id ? t('forgeTabConfirmRemove') : t('forgeTabRemove'))))))
+                  : canCreate(root) && formFor === '' ? h('div', { className: 'dsh-xw-tab-note' }, t('forgeTabNoWorktrees')) : null)),
+            h('label', { className: 'dsh-xw-tab-retain', title: t('forgeTabRetainHint') },
+              h('input', {
+                type: 'checkbox',
+                checked: state.retainWorktreesOnArchive === true,
+                disabled: busy !== '',
+                onChange: (event) => { void setRetain(event.target.checked) },
+              }),
+              h('span', null, t('forgeTabRetain'))),
             state.gitCheckedAt ? h('div', { className: 'dsh-xw-tab-note' }, t('forgeTabChecked', { time: new Date(state.gitCheckedAt).toLocaleTimeString() })) : null),
+        notice !== '' ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'success', role: 'status' }, notice) : null,
+        actionError !== '' ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'error', role: 'alert' }, actionError) : null,
         error !== '' ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'error', role: 'alert' }, t('forgeTabFailed', { error })) : null)
     }
 

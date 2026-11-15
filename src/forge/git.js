@@ -183,6 +183,7 @@ export async function inspectGit(directory, options = {}) {
   const resolvedGitDir = gitDir.exitCode === 0 ? canonical(gitDir.stdout.trim()) : null
   const isWorktree = commonDir !== null && resolvedGitDir !== null
     && commonDir.toLowerCase() !== resolvedGitDir.toLowerCase()
+  const isRepositoryRoot = repositoryRoot.toLowerCase() === canonical(directory).toLowerCase()
 
   let ahead = null
   let behind = null
@@ -201,6 +202,7 @@ export async function inspectGit(directory, options = {}) {
 
   return {
     kind: isWorktree ? 'git-worktree' : 'git-repo',
+    isRepositoryRoot,
     repositoryRoot,
     commonDir,
     gitDir: resolvedGitDir,

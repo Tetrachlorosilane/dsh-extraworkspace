@@ -66,11 +66,14 @@ src/store.js             storage-domain declaration + memory fallback
 src/manager.js           Per-session orchestration, serialized mutations, public panel state
 src/http.js              Host JSON route, token, body limit, error mapping
 src/forge/git.js         Read-only Git inspection for the optional Forge companion
+src/forge/run.js         Confined Git execution for extra worktree mutations
+src/forge/worktree.js    Extra worktree name/path/allocation/create/remove helpers
 client.js                Plain Module Loader factory: header button + modal editor
 locale/{en,zh}.json      Plugin Manager display metadata
 docs/DETAIL.md           Plugin Manager detail page
 tests/paths.test.mjs     Node test runner coverage for path parsing/safety
 tests/git.test.mjs       Read-only Git inspector coverage (scratch repositories)
+tests/worktree.test.mjs  Worktree name/path safety coverage
 tests/acl-selftest.mjs   Manual AclSandbox probe for the process grant
 ```
 
@@ -160,6 +163,11 @@ domain: extra_workspaces
 version: 1
 layout: per-record
 tables: sessions
+
+domain: extra_workspaces_preferences
+version: 1
+layout: per-record
+tables: preferences
 ```
 
 Record shape:
@@ -173,11 +181,21 @@ Record shape:
       "path": "D:\\projects\\shared",
       "label": "Shared assets",
       "enabled": true,
-      "addedAt": 1760000000000
+      "addedAt": 1760000000000,
+      "kind": "git-repo",
+      "git": { "repositoryRoot": "D:/repo", "commonDir": "D:/repo/.git", "gitDir": "D:/repo/.git", "isRepositoryRoot": true },
+      "worktrees": [
+        { "id": "uuid", "path": "D:/repo/.agents/worktrees/feat", "branch": "feat", "baseCommit": "…", "createdAt": 1760000000000 }
+      ]
     }
   ]
 }
 ```
+
+A separate `extra_workspaces_preferences` domain stores
+`{ id: "global", retainWorktreesOnArchive: boolean }`. The default is `false`,
+matching Forge's archive-cleanup default. Only worktree records are durable;
+runtime Git state and each worktree `state` are derived.
 
 - Zod is imported bare. DSH supplies it because it is in
   `@deepseek-ai/dsh-storage-domain`'s dependency closure. If the import
@@ -222,7 +240,8 @@ turns an accidental-write fence into a broad one. Add a test in
 - Body limit 128 KiB; invalid JSON is 400.
 - Routes: `GET /state?sessionId[&refresh=1]`, `POST /resolve`, `POST /add`,
   `POST /remove`, `POST /set-enabled`, `POST /retry`,
-  `POST /repair-permissions`.
+  `POST /repair-permissions`, `POST /add-worktree`, `POST /remove-worktree`,
+  `POST /set-retain-worktrees`.
 - Errors map from `WorkspacePathError`, `WorkspaceConflictError`,
   `WorkspaceEntryNotFoundError`, `SessionNotFoundError`, and `HttpError`.
 - The token is per Host process. The Client retries once after a 401, which
@@ -246,6 +265,11 @@ turns an accidental-write fence into a broad one. Add a test in
   state for extra roots; it is not registered when Forge is inactive.
 - `ExtraTab` calls `GET /state?refresh=1`, which runs `inspectGit()` on every
   enabled root. This is read-only Host Git, not the sandboxed write path.
+- The tab creates/removes extra worktrees through the Host routes and never
+  calls `ctx.worktrees` or `workingDirectory.set`; the Session cwd stays put.
+- `addWorktree`/`removeWorktree` and the archive switch reject requests when
+  `ctx.get('forgePanel')` is absent, so the companion cannot be driven with
+  Forge disabled. `archiveSession` also defaults to auto-clean.
 - Uses only `react` and `react-dom` from the shared module table. No Harness
   Client package is imported.
 - Modal is rendered with `ReactDOM.createPortal` to `document.body`; the
@@ -265,14 +289,16 @@ turns an accidental-write fence into a broad one. Add a test in
 
 Before handing a change back:
 
-1. `node --check index.js client.js src/*.js`
-2. `node --test tests/paths.test.mjs tests/git.test.mjs` (all tests)
+1. `node --check index.js client.js $(find src -name '*.js')`
+2. `node --test tests/*.test.mjs` (all tests)
 3. Validate `package.json` and locale JSON parse:
    `node -e "JSON.parse(require('fs').readFileSync('package.json')); ..."`
 4. Install the bundle with `plugin_manager` (local directory target).
 5. Confirm the Host row is active with `cordis_inspect_query`
-   (`Config.listConfigs` filtered by name) and the Client slot has the
-   `dsh-extraworkspace` occupant.
+   (`Config.listConfigs` filtered by name), the header slot has the
+   `dsh-extraworkspace` occupant, and (with Forge active) the
+   `sidebar.right.pane.tab` slot has the
+   `@dsh-external/dsh-extraworkspace/extra` occupant.
 6. In the running Web GUI, open a session, click the header button, add a
    directory outside the workspace, and verify:
    - the file-tool grant works (`write` a file there);
@@ -330,3 +356,7 @@ Before handing a change back:
 - `0.1.0` — initial implementation: per-session allow-list, file-tool
   registration, Windows ACL process extension, header modal, storage domain,
   path compatibility, docs, tests.
+- `0.1.1` — optional Forge companion: read-only Git status tab gated on
+  `forgePanel`, extra worktree create/remove without changing cwd, archive
+  cleanup with a Forge-like retain switch (default false), preference domain,
+  and no new model tools.

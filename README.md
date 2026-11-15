@@ -100,14 +100,26 @@ strip as the Forge panel. The tab is gated on the Host reporting
 `forge: true` from `/bootstrap`; when Forge is disabled it is not
 registered and the existing session-header panel remains the only UI.
 
-The companion tab currently shows:
+The companion tab shows and manages the extra roots:
 
 - the root workspace and a note that Forge owns its PR review and worktrees;
 - each extra workspace with its detected kind (directory, Git repository, or
   linked worktree), branch/HEAD, dirty count, ahead/behind, and worktree list;
 - a manual **Refresh status** action. Git inspection is read-only
   (`GIT_OPTIONAL_LOCKS=0`), runs on the Host, and does not need sandbox
-  write permission.
+  write permission;
+- for a Git repository root, **Add worktree** creates a checkout under
+  `<repo>/.agents/worktrees/<name>` without changing the Session working
+  directory. **Remove** runs a non-force `git worktree remove`; a dirty or
+  locked checkout is refused and the branch is always kept;
+- **Keep extra worktrees when archiving**, default **off** to match Forge's
+  `retainOnArchive: false`: unless it is switched on, archiving removes the
+  clean, unlocked worktrees this plugin created that no other live session
+  uses, and keeps their branches. A refused removal is retained and logged.
+
+The extra-worktree feature is only available for a repository **root** added as
+an extra workspace. A subdirectory or a linked worktree needs the shared Git
+directory as a separate grant and is rejected with an explanatory error.
 
 The companion adds **no model-facing tools**. The model keeps the same
 `bash`/`write` surface and a stable list of approved extra roots; Forge keeps
