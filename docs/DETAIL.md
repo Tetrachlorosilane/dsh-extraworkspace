@@ -70,9 +70,12 @@ workspace is refused.
 
 ## Troubleshooting
 
-- **Processes error**: check that the directory is on NTFS, is owned by the
-  current user, and grants the owner Full control (the Low label lives in the
-  SACL and needs `WRITE_OWNER`). Retry after fixing permissions.
+- **Processes error / Win32 5**: the directory's DACL does not grant your
+  Windows user Full control; the Low label needs `WRITE_OWNER`. Use **Fix
+  permissions** in the row, which adds an inheritable Full control ACE for
+  your user and reapplies the grant. The ACE is additive and stays if you
+  later remove the entry. ReFS works; FAT/exFAT has no NTFS security descriptor
+  and cannot take the process grant.
 - **Directory missing**: reconnect the drive or restore the directory, then
   use **Retry**.
 - **Read-only warning**: switch the session to `workspace-write` with the

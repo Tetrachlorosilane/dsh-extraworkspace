@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { canonicalPath } from '@deepseek-ai/dsh-sandbox'
-import { AclGrantManager } from './acl.js'
+import { AclGrantManager, grantCurrentUserFullControl } from './acl.js'
 import { messageOf, resolveWorkspaceInput, WorkspacePathError } from './paths.js'
 
 /** A session id that no live Session owns. */
@@ -38,6 +38,15 @@ export class WorkspaceConflictError extends Error {
     super(`The directory is already configured for this session: ${path}`)
     this.name = 'WorkspaceConflictError'
     this.code = 'DUPLICATE'
+  }
+}
+
+/** The explicit ACL repair could not be applied. */
+export class PermissionRepairError extends Error {
+  constructor(message, cause) {
+    super(message, { cause })
+    this.name = 'PermissionRepairError'
+    this.code = 'PERMISSION_REPAIR_FAILED'
   }
 }
 
@@ -436,6 +445,51 @@ export class ExtraWorkspaceManager {
         state.applied.delete(id)
       }
       const applied = await this.#applyRoot(state, current)
+      state.applied.set(id, applied)
+      if (applied.status.fileTools === 'active') {
+        const next = { ...state.record, roots: state.record.roots.map((root) => root.id === id ? applied.record : root) }
+        state.record = next
+        await this.store.put(next)
+      }
+      return this.publicState(sessionId)
+    })
+  }
+
+
+  /**
+   * Explicitly grant the signed-in user Full control on one entry's physical
+   * directory, then reapply the sandbox grant. Used only from the panel's
+   * "Fix permissions" confirmation; the ACE is additive and is not revoked
+   * when the entry is removed.
+   * @param {string} sessionId - live session identity.
+   * @param {string} id - entry id.
+   * @returns {Promise<object>} the updated public session state.
+   */
+  async repairPermissions(sessionId, id) {
+    const session = this.requireSession(sessionId)
+    const state = await this.attach(session)
+    return this.#enqueue(state, async () => {
+      const index = state.record.roots.findIndex((root) => root.id === id)
+      if (index === -1) throw new WorkspaceEntryNotFoundError(id)
+      const current = state.record.roots[index]
+      if (!current.enabled) {
+        throw new WorkspacePathError('DISABLED', 'Enable the entry before repairing it.')
+      }
+      const parsed = resolveWorkspaceInput(current.path, {
+        sessionCwd: this.sessionCwd(session),
+        workspaceRoot: this.workspaceRoot(session),
+      })
+      try {
+        await grantCurrentUserFullControl(parsed.canonicalPath)
+      } catch (error) {
+        throw new PermissionRepairError(messageOf(error), error)
+      }
+      const previousApplied = state.applied.get(id)
+      if (previousApplied !== undefined) {
+        await this.#disposeApplied(previousApplied)
+        state.applied.delete(id)
+      }
+      const applied = await this.#applyRoot(state, { ...current, path: parsed.canonicalPath })
       state.applied.set(id, applied)
       if (applied.status.fileTools === 'active') {
         const next = { ...state.record, roots: state.record.roots.map((root) => root.id === id ? applied.record : root) }

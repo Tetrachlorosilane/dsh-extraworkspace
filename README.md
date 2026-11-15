@@ -101,9 +101,9 @@ contains the session workspace is refused.
 - ACL propagation is eager: adding a very large directory can take seconds
   while the inheritable ACE and label reach every descendant. The panel shows
   a busy state during that time.
-- Filesystems without NTFS security descriptors (for example FAT/exFAT) fail
-  the process grant. File tools may still work; the row is marked **Processes
-  error** and can be retried.
+- NTFS and ReFS support the process grant. FAT/exFAT has no NTFS security
+  descriptor and fails the process grant; file tools may still work, and the
+  row is marked **Processes error**.
 - This is not a defense against prompt injection, a hostile local process, or
   a user who intentionally broadens the sandbox. It only lets the user widen
   the accidental-write fence for a chosen session.
@@ -116,6 +116,20 @@ contains the session workspace is refused.
   saved allow-list is restored on resume. A forked or subagent session is a new
   session and starts with an empty allow-list; configure it separately if it
   needs the same directories.
+
+## Troubleshooting
+
+- **Processes error / Win32 5 (access denied)**: the directory DACL does not
+  grant your Windows user Full control. The Low label needs `WRITE_OWNER`.
+  Click **Fix permissions** in the row (adds an inheritable Full control ACE
+  for your user), or run
+  `icacls "S:\path" /grant "%USERNAME%:(OI)(CI)F"`. The ACE is additive and is
+  not removed automatically. ReFS works; FAT/exFAT cannot take the process
+  grant.
+- **Directory missing**: reconnect the drive or restore the directory, then
+  use **Retry**.
+- **Read-only warning**: switch the session to `workspace-write` with the
+  composer's permission control.
 
 ## Development
 

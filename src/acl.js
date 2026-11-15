@@ -138,6 +138,36 @@ async function removeEveryoneDeleteDeny(directory) {
 }
 
 /**
+ * Grant the signed-in Windows user an inheritable Full control ACE on one
+ * directory. DSH's Low-label write needs `WRITE_OWNER`, and many secondary
+ * volumes grant the user only `Modify` through `Authenticated Users`; the
+ * owner-implicit rights do not include `WRITE_OWNER`. This is an additive DACL
+ * edit (existing ACEs, denies, owner, and inheritance stay intact) and is
+ * only called from the panel's explicit "Fix permissions" confirmation.
+ * @param {string} directory - absolute directory path.
+ * @returns {Promise<string>} the current user's SID that was granted.
+ */
+export async function grantCurrentUserFullControl(directory) {
+  if (!existsSync(directory)) throw new Error(`The directory no longer exists: ${directory}`)
+  const sid = runPowerShell('[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value', {}).trim()
+  if (!/^S-1-5-\d+(?:-\d+)+$/u.test(sid)) {
+    throw new Error(`Could not determine the current user's SID (PowerShell returned ${JSON.stringify(sid)}).`)
+  }
+  const result = spawnSync('icacls', [directory, '/grant', `*${sid}:(OI)(CI)F`], {
+    encoding: 'utf8',
+    timeout: 20_000,
+    windowsHide: true,
+    maxBuffer: 1_048_576,
+  })
+  if (result.error !== undefined) throw result.error
+  if (result.status !== 0) {
+    const detail = `${result.stderr || result.stdout || ''}`.trim() || `icacls exited with ${String(result.status)}`
+    throw new Error(`Could not grant Full control to the current user on ${directory}: ${detail}`)
+  }
+  return sid
+}
+
+/**
  * Shared ref-counted grant table for one Host process.
  *
  * The unit of authority is `(workspace capability SID, physical directory)`.

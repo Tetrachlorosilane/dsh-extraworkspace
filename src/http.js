@@ -12,6 +12,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import { messageOf, WorkspacePathError } from './paths.js'
 import {
+  PermissionRepairError,
   SessionNotFoundError,
   WorkspaceConflictError,
   WorkspaceEntryNotFoundError,
@@ -201,6 +202,12 @@ export function createHttpController({ ctx, manager, token, version }) {
         return
       }
 
+      if (route === '/repair-permissions') {
+        const id = requiredString(body, 'id')
+        sendJson(res, 200, await manager.repairPermissions(sessionId, id))
+        return
+      }
+
       throw new HttpError(404, 'NOT_FOUND', 'Unknown route.')
     } catch (error) {
       if (res.writableEnded) return
@@ -214,6 +221,10 @@ export function createHttpController({ ctx, manager, token, version }) {
       }
       if (error instanceof WorkspaceConflictError) {
         sendJson(res, 409, { error: error.message, code: error.code })
+        return
+      }
+      if (error instanceof PermissionRepairError) {
+        sendJson(res, 400, { error: error.message, code: error.code })
         return
       }
       if (error instanceof WorkspaceEntryNotFoundError) {

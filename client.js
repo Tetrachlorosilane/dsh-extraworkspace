@@ -76,7 +76,13 @@ window.__ModuleLoader__.load({
       enabledSuccess: 'Enabled {path}.',
       disabledSuccess: 'Disabled {path}; its grants were revoked.',
       processGrantFailed: 'The Windows process grant failed.',
+      processGrantAccessDeniedHint: 'The directory does not grant your Windows user Full control; the sandbox Low label needs WRITE_OWNER. Use Fix permissions.',
       fileGrantFailed: 'The file-tool grant failed.',
+      fixPermissions: 'Fix permissions',
+      fixPermissionsTitle: 'Grant your Windows user Full control on this directory? This adds an inheritable ACE and is required for the sandbox Low label. Existing permissions are kept.',
+      fixPermissionsConfirm: 'Grant Full control',
+      repairSuccess: 'Permissions repaired for {path}.',
+      errorPermissionRepair: 'Permission repair failed.',
       errorNotFound: 'The directory does not exist.',
       errorNotDirectory: 'The path is not a directory.',
       errorSymlink: 'The path is a symbolic link or junction; use the physical directory.',
@@ -164,7 +170,13 @@ window.__ModuleLoader__.load({
       enabledSuccess: '已启用 {path}。',
       disabledSuccess: '已停用 {path}，相关授权已撤销。',
       processGrantFailed: 'Windows 进程授权失败。',
+      processGrantAccessDeniedHint: '目录未给当前 Windows 用户完全控制权限；写入沙箱 Low 标签需要 WRITE_OWNER。请点“修复权限”。',
       fileGrantFailed: '文件工具授权失败。',
+      fixPermissions: '修复权限',
+      fixPermissionsTitle: '为当前 Windows 用户添加继承的完全控制权限？这是写入沙箱 Low 标签所必需的；现有权限会保留。',
+      fixPermissionsConfirm: '授予完全控制',
+      repairSuccess: '已修复 {path} 的权限。',
+      errorPermissionRepair: '权限修复失败。',
       errorNotFound: '目录不存在。',
       errorNotDirectory: '该路径不是目录。',
       errorSymlink: '该路径是符号链接或联接点，请使用物理目录。',
@@ -585,6 +597,15 @@ window.__ModuleLoader__.load({
   align-items: center;
   gap: 4px;
 }
+.dsh-xw-repair-confirm {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+}
 .dsh-xw-preview {
   margin-top: 9px;
   padding: 9px 10px;
@@ -660,6 +681,7 @@ window.__ModuleLoader__.load({
       INTERNAL: 'errorInternal',
       FILE_GRANT_FAILED: 'fileGrantFailed',
       PROCESS_GRANT_FAILED: 'processGrantFailed',
+      PERMISSION_REPAIR_FAILED: 'errorPermissionRepair',
       PATH_ERROR: 'errorPathInvalid',
     }
 
@@ -822,8 +844,10 @@ window.__ModuleLoader__.load({
       return badges
     }
 
-    function RootRow({ root, t, mode, busy, confirmRemove, setConfirmRemove, onToggle, onRemove, onRetry }) {
+    function RootRow({ root, t, mode, busy, confirmRemove, setConfirmRemove, confirmRepair, setConfirmRepair, onToggle, onRemove, onRetry, onRepair }) {
       const showRetry = root.enabled && (root.status.state === 'error' || root.status.state === 'partial' || root.status.state === 'missing')
+      const showRepair = root.enabled && root.status.processes === 'error'
+      const accessDenied = showRepair && /Win32 5|access denied|拒绝访问|ACCESS_DENIED/iu.test(root.status.error ?? '')
       const localizedError = root.status.error ? statusErrorText(root.status, t) : ''
       const showRawDetail = root.status.errorCode === 'PROCESS_GRANT_FAILED' || root.status.errorCode === 'FILE_GRANT_FAILED'
       const rawDetail = showRawDetail && root.status.error && localizedError !== root.status.error ? root.status.error : ''
@@ -834,8 +858,26 @@ window.__ModuleLoader__.load({
             h('div', { className: 'dsh-xw-badges' }, ...badgesFor(root, t, mode))),
           h('div', { className: 'dsh-xw-mono dsh-xw-row-path', title: root.path }, root.path),
           root.status.error ? h('div', { className: 'dsh-xw-error' }, localizedError) : null,
+          accessDenied ? h('div', { className: 'dsh-xw-warn' }, t('processGrantAccessDeniedHint')) : null,
           rawDetail !== '' ? h('div', { className: 'dsh-xw-hint' }, rawDetail) : null,
-          ...(root.status.warnings ?? []).map((warning, index) => h('div', { key: `warning-${index}`, className: 'dsh-xw-warn' }, warning))),
+          ...(root.status.warnings ?? []).map((warning, index) => h('div', { key: `warning-${index}`, className: 'dsh-xw-warn' }, warning)),
+          confirmRepair === root.id
+            ? h('div', { className: 'dsh-xw-repair-confirm' },
+              h('div', { className: 'dsh-xw-warn' }, t('fixPermissionsTitle')),
+              h('div', { className: 'dsh-xw-form-actions' },
+                h('button', {
+                  type: 'button',
+                  className: 'dsh-xw-btn dsh-xw-btn-primary',
+                  disabled: busy !== '',
+                  onClick: () => onRepair(root),
+                }, t('fixPermissionsConfirm')),
+                h('button', {
+                  type: 'button',
+                  className: 'dsh-xw-btn',
+                  disabled: busy !== '',
+                  onClick: () => setConfirmRepair(''),
+                }, t('cancel'))))
+            : null),
         h('div', { className: 'dsh-xw-row-actions' },
           h('button', {
             type: 'button',
@@ -847,6 +889,12 @@ window.__ModuleLoader__.load({
             disabled: busy !== '',
             onClick: () => onToggle(root),
           }),
+          showRepair ? h('button', {
+            type: 'button',
+            className: 'dsh-xw-btn',
+            disabled: busy !== '',
+            onClick: () => setConfirmRepair(root.id),
+          }, t('fixPermissions')) : null,
           showRetry ? h('button', {
             type: 'button',
             className: 'dsh-xw-icon-btn',
@@ -899,6 +947,7 @@ window.__ModuleLoader__.load({
       const [preview, setPreview] = React.useState(null)
       const [previewBusy, setPreviewBusy] = React.useState(false)
       const [confirmRemove, setConfirmRemove] = React.useState('')
+      const [confirmRepair, setConfirmRepair] = React.useState('')
       const dialogRef = React.useRef(null)
       const loadSeq = React.useRef(0)
       const previewSeq = React.useRef(0)
@@ -925,6 +974,7 @@ window.__ModuleLoader__.load({
         setState(null)
         setPreview(null)
         setConfirmRemove('')
+        setConfirmRepair('')
         setError('')
         setNotice(null)
       }, [sessionId])
@@ -936,6 +986,7 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         if (!open) {
           setConfirmRemove('')
+          setConfirmRepair('')
           return undefined
         }
         void load()
@@ -1145,6 +1196,29 @@ window.__ModuleLoader__.load({
         }
       }, [applyResult, sessionId, t])
 
+      const onRepair = React.useCallback(async (root) => {
+        loadSeq.current += 1
+        setLoading(false)
+        setBusy(root.id)
+        setError('')
+        setNotice(null)
+        try {
+          const next = await request('/repair-permissions', { method: 'POST', body: { sessionId, id: root.id } })
+          const applied = next?.roots?.find((item) => item.id === root.id)
+          if (applied !== undefined && applied.status.error) {
+            setState(next)
+            setNotice({ kind: 'warn', text: t('retryFailed', { error: statusErrorText(applied.status, t) }) })
+          } else {
+            applyResult(next, 'repairSuccess', root.path)
+          }
+          setConfirmRepair('')
+        } catch (repairError) {
+          setError(t('saveFailed', { error: hostErrorText(repairError, t) }))
+        } finally {
+          setBusy('')
+        }
+      }, [applyResult, sessionId, t])
+
       if (sessionId === undefined || sessionId === null) return null
 
       const count = state?.roots?.filter((root) => root.enabled).length ?? 0
@@ -1247,9 +1321,12 @@ window.__ModuleLoader__.load({
                   busy,
                   confirmRemove,
                   setConfirmRemove,
+                  confirmRepair,
+                  setConfirmRepair,
                   onToggle,
                   onRemove,
                   onRetry,
+                  onRepair,
                 })))),
 
         h('div', { className: 'dsh-xw-section' },

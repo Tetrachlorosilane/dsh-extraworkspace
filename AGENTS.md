@@ -139,6 +139,15 @@ file-tool capability.
 - Removing an entry is not instant for already-running processes only in the
   sense that their token is already minted; the ACL edit is immediate for new
   opens. Documented in the UI footer.
+- **Explicit permission repair** (`POST /repair-permissions`, panel button
+  **Fix permissions**) exists for the common secondary-volume case where the
+  user owns the directory but the inherited ACL grants only `Modify` through
+  `Authenticated Users`; owner-implicit rights do not include `WRITE_OWNER`, so
+  the Low-label apply fails with Win32 5. The repair runs
+  `icacls <dir> /grant *<current-user-SID>:(OI)(CI)F` and then reapplies the
+  grant. It is additive, never removes existing ACEs, and is not revoked when
+  the entry is removed. ReFS supports the label path (verified); FAT/exFAT does
+  not.
 
 ## 7. Persistence
 
@@ -210,7 +219,8 @@ turns an accidental-write fence into a broad one. Add a test in
   auth. The page then sends `x-dsh-extraworkspace-token` on every request.
 - Body limit 128 KiB; invalid JSON is 400.
 - Routes: `GET /state?sessionId`, `POST /resolve`, `POST /add`,
-  `POST /remove`, `POST /set-enabled`, `POST /retry`.
+  `POST /remove`, `POST /set-enabled`, `POST /retry`,
+  `POST /repair-permissions`.
 - Errors map from `WorkspacePathError`, `WorkspaceConflictError`,
   `WorkspaceEntryNotFoundError`, `SessionNotFoundError`, and `HttpError`.
 - The token is per Host process. The Client retries once after a 401, which
