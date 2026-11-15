@@ -1,10 +1,11 @@
 // Browser half of dsh-extraworkspace.
 //
-// Plain-JS Module Loader factory (no build step): registers one utility button
-// in the session header and a modal editor that talks to the Host half over
-// one same-origin JSON route. Visible text goes through the Client locale
-// service. The component uses only React and ReactDOM from the page's shared
-// module table and only --dsw-alias-* theme tokens for chrome colors.
+// Plain-JS Module Loader factory (no build step): registers a session-header
+// button that opens an Extra workspaces tab in the right sidebar, plus the
+// embedded settings panel. The tab talks to the Host half over one same-origin
+// JSON route. Visible text goes through the Client locale service. The
+// component uses only React and ReactDOM from the page's shared module table
+// and only --dsw-alias-* theme tokens for chrome colors.
 window.__ModuleLoader__.load({
   id: '@dsh-external/dsh-extraworkspace',
   factory(require) {
@@ -109,10 +110,10 @@ window.__ModuleLoader__.load({
       pathCopied: 'Path copied.',
       forgeTabTitle: 'Extra workspaces',
       forgeTabGuide: 'Manage extra workspaces here; with Forge, inspect their Git repositories and worktrees.',
-      forgeTabIntro: 'The same right-sidebar page as Forge. Forge keeps the root workspace; this tab manages extra workspaces.',
+      forgeTabIntro: 'Manage extra workspaces here. Forge keeps the root workspace; this section adds Git and worktree details for extra repositories.',
       forgeTabRoot: 'Root workspace',
       forgeTabRootNote: 'PR review and root worktrees are managed by Forge.',
-      forgeTabEmpty: 'No extra workspaces. Add one from the session header panel.',
+      forgeTabEmpty: 'No extra workspaces. Add one below.',
       forgeTabRefresh: 'Refresh status',
       forgeTabLoading: 'Inspecting Git state…',
       forgeTabFailed: 'Could not read extra workspace state: {error}',
@@ -124,7 +125,6 @@ window.__ModuleLoader__.load({
       forgeTabAhead: '{ahead} ahead',
       forgeTabBehind: '{behind} behind',
       forgeTabWorktrees: '{count} worktrees',
-      forgeTabForgeOff: 'Forge is not active; this tab is unavailable.',
       forgeTabChecked: 'Checked {time}',
       forgeTabAddWorktree: 'Add worktree',
       forgeTabName: 'Branch / directory',
@@ -139,14 +139,14 @@ window.__ModuleLoader__.load({
       forgeTabWorktreeAdded: 'Created {path}.',
       forgeTabWorktreeRemoved: 'Removed {path}.',
       forgeTabActionFailed: 'Action failed: {error}',
-      forgeTabOnlyRepoRoot: 'Add the repository root to create worktrees.',
+      forgeTabOnlyRepoRoot: 'This entry is not a repository root, so worktrees cannot be created here.',
       forgeTabManagedWorktrees: 'Worktrees created here',
-      forgeTabNoWorktrees: 'No worktrees created here yet.',
+      forgeTabNoWorktrees: 'No worktrees created by this plugin yet.',
       forgeTabMissing: 'missing',
       forgeTabLocked: 'locked',
       forgeTabUnregistered: 'unregistered',
       forgeTabRetain: 'Keep extra worktrees when archiving',
-      forgeTabRetainHint: 'Off (default): archiving removes clean, unlocked worktrees this plugin created, keeping their branches. On: every extra worktree is kept.',
+      forgeTabRetainHint: 'Off (default): archiving removes clean, unlocked worktrees this plugin created that no other live session uses, keeping their branches. On: every extra worktree is kept.',
     }
 
     const ZH = {
@@ -243,10 +243,10 @@ window.__ModuleLoader__.load({
       pathCopied: '路径已复制。',
       forgeTabTitle: '额外工作区',
       forgeTabGuide: '在此管理额外工作区；启用 Forge 时可查看 Git 仓库与工作树。',
-      forgeTabIntro: '与 Forge 共用一个右侧栏页面。Forge 管理根工作区；此标签管理额外工作区。',
+      forgeTabIntro: '在此管理额外工作区。Forge 管理根工作区；此区域额外显示额外仓库的 Git 与工作树信息。',
       forgeTabRoot: '根工作区',
       forgeTabRootNote: 'PR 审阅与根工作树由 Forge 管理。',
-      forgeTabEmpty: '尚无额外工作区。请在会话头部面板中添加。',
+      forgeTabEmpty: '尚无额外工作区。请在下方添加。',
       forgeTabRefresh: '刷新状态',
       forgeTabLoading: '正在检查 Git 状态…',
       forgeTabFailed: '读取额外工作区状态失败：{error}',
@@ -258,7 +258,6 @@ window.__ModuleLoader__.load({
       forgeTabAhead: '领先 {ahead}',
       forgeTabBehind: '落后 {behind}',
       forgeTabWorktrees: '{count} 个工作树',
-      forgeTabForgeOff: 'Forge 未启用，此标签不可用。',
       forgeTabChecked: '检查于 {time}',
       forgeTabAddWorktree: '新建工作树',
       forgeTabName: '分支 / 目录',
@@ -273,14 +272,14 @@ window.__ModuleLoader__.load({
       forgeTabWorktreeAdded: '已创建 {path}。',
       forgeTabWorktreeRemoved: '已移除 {path}。',
       forgeTabActionFailed: '操作失败：{error}',
-      forgeTabOnlyRepoRoot: '请添加仓库根目录以创建工作树。',
+      forgeTabOnlyRepoRoot: '该条目不是仓库根目录，无法在此创建工作树。',
       forgeTabManagedWorktrees: '在此创建的工作树',
-      forgeTabNoWorktrees: '尚未在此创建工作树。',
+      forgeTabNoWorktrees: '此插件尚未创建任何工作树。',
       forgeTabMissing: '缺失',
       forgeTabLocked: '已锁定',
       forgeTabUnregistered: '未登记',
       forgeTabRetain: '归档时保留额外工作树',
-      forgeTabRetainHint: '关闭（默认）：归档会移除此插件创建的干净、未锁定工作树，保留分支。开启：保留所有额外工作树。',
+      forgeTabRetainHint: '关闭（默认）：归档会移除此插件创建的、未被其他活跃会话使用的干净且未锁定工作树，保留分支。开启：保留所有额外工作树。',
     }
 
     const CSS = String.raw`
