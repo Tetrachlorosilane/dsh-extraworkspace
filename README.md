@@ -2,6 +2,8 @@
 
 Per-session additional workspaces for DeepSeek Harness on Windows.
 
+Part of the [dsh-plugin](https://github.com/topics/dsh-plugin) topic.
+
 DSH's Windows sandbox confines subprocess writes with a **low-integrity,
 write-restricted token** whose only write capabilities are the session
 workspace and a private temporary directory. The harness file tools are fenced
@@ -123,7 +125,7 @@ contains the session workspace is refused.
   grant your Windows user Full control. The Low label needs `WRITE_OWNER`.
   Click **Fix permissions** in the row (adds an inheritable Full control ACE
   for your user), or run
-  `icacls "S:\path" /grant "%USERNAME%:(OI)(CI)F"`. The ACE is additive and is
+  `icacls "X:\path" /grant "%USERNAME%:(OI)(CI)F"`. The ACE is additive and is
   not removed automatically. ReFS works; FAT/exFAT cannot take the process
   grant.
 - **Directory missing**: reconnect the drive or restore the directory, then

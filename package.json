@@ -13,6 +13,14 @@
     "workspace"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tetrachlorosilane/dsh-extraworkspace.git"
+  },
+  "homepage": "https://github.com/Tetrachlorosilane/dsh-extraworkspace#readme",
+  "bugs": {
+    "url": "https://github.com/Tetrachlorosilane/dsh-extraworkspace/issues"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
