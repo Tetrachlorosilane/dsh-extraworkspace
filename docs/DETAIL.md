@@ -83,8 +83,9 @@ Forge. Forge keeps the root workspace; this tab manages extra roots.
 - **Keep extra worktrees when archiving** is off by default, matching Forge's
   archive cleanup. Unless enabled, archiving removes clean, unlocked,
   unreferenced worktrees created here and keeps their branches.
-- The tab and these routes are unavailable when Forge is disabled. No new
-  model tools are added.
+- The tab and these routes are unavailable when Forge is disabled; in that
+  case the old session-header panel remains. When Forge is active, the old
+  header button is hidden so there is one UI. No new model tools are added.
 
 ## Troubleshooting
 

@@ -1,0 +1,12 @@
+{
+  "name": "@dsh-external/xw-archive-harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Temporary integration harness for the dsh-extraworkspace archive-cleanup path",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

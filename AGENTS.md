@@ -74,6 +74,8 @@ docs/DETAIL.md           Plugin Manager detail page
 tests/paths.test.mjs     Node test runner coverage for path parsing/safety
 tests/git.test.mjs       Read-only Git inspector coverage (scratch repositories)
 tests/worktree.test.mjs  Worktree name/path safety coverage
+tests/archive-harness/   Temporary bundle that creates and archives a real Session
+tests/archive-selftest.mjs  Validates the archive harness result
 tests/acl-selftest.mjs   Manual AclSandbox probe for the process grant
 ```
 
@@ -262,7 +264,9 @@ turns an accidental-write fence into a broad one. Add a test in
 - When `/bootstrap` reports `forge: true` and `ctx.get('sidebarRightTabs')`
   exists, also registers an `Extra workspaces` tab in
   `sidebar.right.pane.tab` and a guide entry. The tab shows read-only Git
-  state for extra roots; it is not registered when Forge is inactive.
+  state for extra roots; it is not registered when Forge is inactive. In that
+  case the companion replaces the old header button instead of adding a second
+  entry point; when Forge is inactive, the header button/modal is registered.
 - `ExtraTab` calls `GET /state?refresh=1`, which runs `inspectGit()` on every
   enabled root. This is read-only Host Git, not the sandboxed write path.
 - The tab creates/removes extra worktrees through the Host routes and never
@@ -308,7 +312,10 @@ Before handing a change back:
 8. If testing the process grant, run `tests/acl-selftest.mjs` (manual; creates
    and cleans temp directories) or a small `AclSandbox` probe. Do not claim
    the process extension works from UI green badges alone.
-9. Run one UI/UX review subagent per the DSH verification guidance, then fix
+9. Run the real archive-cleanup harness: install `tests/archive-harness`,
+   wait for `xw-archive-selftest-result.json`, run
+   `node tests/archive-selftest.mjs`, then remove the harness bundle.
+10. Run one UI/UX review subagent per the DSH verification guidance, then fix
    substantiated issues.
 
 ## 12. Known pitfalls

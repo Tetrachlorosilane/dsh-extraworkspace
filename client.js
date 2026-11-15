@@ -1819,11 +1819,11 @@ window.__ModuleLoader__.load({
     async function installForgeTab(ctx) {
       try {
         await ensureToken()
-        if (bootstrapInfo?.forge !== true) return
+        if (bootstrapInfo?.forge !== true) return false
         const tabs = ctx.get('sidebarRightTabs')
         if (tabs === undefined) {
           console.warn('dsh-extraworkspace: forge is active but sidebarRightTabs is unavailable; the Extra workspaces tab was not registered.')
-          return
+          return false
         }
         const id = '@dsh-external/dsh-extraworkspace/extra'
         const kind = 'dsh-extraworkspace'
@@ -1843,6 +1843,7 @@ window.__ModuleLoader__.load({
           key: id,
           locale: NS,
         }, ExtraTab))
+        return true
       } catch (error) {
         console.warn('dsh-extraworkspace: could not register the Extra workspaces tab:', error)
       }
@@ -1860,13 +1861,15 @@ window.__ModuleLoader__.load({
           return () => element.remove()
         }, 'dsh-extraworkspace styles')
         runtime = { ctx, t: ctx.locale.bind(NS) }
-        ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
-          name: 'conversation.session.header.utilities',
-          id: 'dsh-extraworkspace',
-          order: 12,
-          label: () => runtime.t('buttonLabel'),
-        }, Panel))
-        await installForgeTab(ctx)
+        const companion = await installForgeTab(ctx)
+        if (!companion) {
+          ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+            name: 'conversation.session.header.utilities',
+            id: 'dsh-extraworkspace',
+            order: 12,
+            label: () => runtime.t('buttonLabel'),
+          }, Panel))
+        }
       },
     }
   },

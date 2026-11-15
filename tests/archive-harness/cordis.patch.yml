@@ -1,0 +1,5 @@
+# Temporary test-only row. Install this directory, run the harness, then remove
+# the bundle. It is never part of the shipped plugin.
+- insert:
+    - id: xw-archive-harness
+      name: '@dsh-external/xw-archive-harness'

@@ -98,7 +98,9 @@ When `@deepseek-ai/dsh-experimental-forge-bundle` is active, the browser
 half also registers an **Extra workspaces** tab in the same right-sidebar tab
 strip as the Forge panel. The tab is gated on the Host reporting
 `forge: true` from `/bootstrap`; when Forge is disabled it is not
-registered and the existing session-header panel remains the only UI.
+registered and the existing session-header panel remains the only UI. When
+Forge is active, the old header button is **not** registered, so the tab is the
+only extra-workspace UI and there is no duplicate entry point.
 
 The companion tab shows and manages the extra roots:
 
@@ -172,8 +174,17 @@ after the page loaded requires a page refresh for the tab to appear or leave.
 ```sh
 node --check index.js
 node --check client.js
-node --test tests/paths.test.mjs tests/git.test.mjs
+node --test tests/*.test.mjs
 ```
+
+The real archive-cleanup path has a manual integration harness:
+
+1. Install `tests/archive-harness` as a temporary bundle from Plugins.
+2. Wait for the harness to archive its scratch Session and write its result.
+3. Run `node tests/archive-selftest.mjs`; it asserts the worktree was removed
+   and the branch retained.
+4. Remove the harness bundle again. It is test-only and is not part of the
+   shipped plugin.
 
 The package has no build step: the host half is plain ESM and the browser half
 is a plain `window.__ModuleLoader__` factory. See [AGENTS.md](AGENTS.md) for the
