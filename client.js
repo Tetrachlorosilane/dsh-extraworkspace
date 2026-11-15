@@ -49,7 +49,7 @@ window.__ModuleLoader__.load({
       badgeDisabled: 'Disabled',
       badgeFiles: 'Files',
       badgeProcesses: 'Processes',
-      badgeProcessesError: 'Process error',
+      badgeProcessesError: 'Processes error',
       badgeProcessesUnsupported: 'Process grant unavailable',
       badgeFilesError: 'File grant error',
       badgeMissing: 'Missing',
@@ -68,6 +68,7 @@ window.__ModuleLoader__.load({
       saveFailed: 'The change failed: {error}',
       addSuccess: 'Added {path}.',
       addPartial: 'Added {path}, but the Windows process grant failed. File tools can write there; sandboxed commands cannot. Use Retry after fixing the directory.',
+      enablePartial: 'Enabled {path}, but the Windows process grant failed. File tools can write there; sandboxed commands cannot. Use Retry after fixing the directory.',
       removeSuccess: 'Removed {path}.',
       toggleSuccess: 'Updated {path}.',
       retrySuccess: 'Retried {path}.',
@@ -155,6 +156,7 @@ window.__ModuleLoader__.load({
       saveFailed: '更改失败：{error}',
       addSuccess: '已添加 {path}。',
       addPartial: '已添加 {path}，但 Windows 进程授权失败。文件工具可写入，沙箱命令不可写入。修复目录后请点“重试”。',
+      enablePartial: '已启用 {path}，但 Windows 进程授权失败。文件工具可写入，沙箱命令不可写入。修复目录后请点“重试”。',
       removeSuccess: '已移除 {path}。',
       toggleSuccess: '已更新 {path}。',
       retrySuccess: '已重试 {path}。',
@@ -1086,13 +1088,14 @@ window.__ModuleLoader__.load({
         setLoading(false)
         setBusy(root.id)
         setError('')
+        setNotice(null)
         try {
           const next = await request('/set-enabled', { method: 'POST', body: { sessionId, id: root.id, enabled: !root.enabled } })
           const updated = next?.roots?.find((item) => item.id === root.id)
           if (!root.enabled && updated !== undefined && updated.status.state === 'partial') {
             setState(next)
             setError('')
-            setNotice({ kind: 'warn', text: t('addPartial', { path: root.path }) })
+            setNotice({ kind: 'warn', text: t('enablePartial', { path: root.path }) })
           } else {
             applyResult(next, root.enabled ? 'disabledSuccess' : 'enabledSuccess', root.path)
           }
@@ -1108,6 +1111,7 @@ window.__ModuleLoader__.load({
         setLoading(false)
         setBusy(root.id)
         setError('')
+        setNotice(null)
         try {
           const next = await request('/remove', { method: 'POST', body: { sessionId, id: root.id } })
           setConfirmRemove('')
@@ -1124,6 +1128,7 @@ window.__ModuleLoader__.load({
         setLoading(false)
         setBusy(root.id)
         setError('')
+        setNotice(null)
         try {
           const next = await request('/retry', { method: 'POST', body: { sessionId, id: root.id } })
           const applied = next?.roots?.find((item) => item.id === root.id)

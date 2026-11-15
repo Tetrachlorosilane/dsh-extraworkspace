@@ -55,7 +55,7 @@ workspace is refused.
 - ACL propagation is eager: adding a very large directory can take seconds
   while the inheritable ACE and label reach every descendant.
 - FAT/exFAT has no NTFS security descriptor; the file grant can still work, but
-  the process grant fails. The row is marked **Process error** and can be
+  the process grant fails. The row is marked **Processes error** and can be
   retried after moving the directory to NTFS.
 - Removing an entry revokes the capability ACE and the Low label, and removes
   the ambient-delete deny the plugin added unless an identical deny already
