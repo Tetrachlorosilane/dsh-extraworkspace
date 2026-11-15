@@ -70,9 +70,14 @@ workspace is refused.
 
 ## Forge companion (optional)
 
-When `@deepseek-ai/dsh-experimental-forge-bundle` is enabled, an
-**Extra workspaces** tab is added to the same right-sidebar tab strip as
-Forge. Forge keeps the root workspace; this tab manages extra roots.
+An **Extra workspaces** tab is available in the right-sidebar tab strip. The
+session-header button opens it; when the right sidebar is unavailable, the
+header button falls back to the inline modal. The tab always manages extra
+roots (add, remove, enable/disable, retry, fix permissions).
+
+When `@deepseek-ai/dsh-experimental-forge-bundle` is enabled, the tab also
+shows the Forge companion section. Forge keeps the root workspace; the plugin
+manages extra roots.
 
 - Each extra root shows its detected kind, branch/HEAD, dirty count,
   ahead/behind, and worktrees.
@@ -83,9 +88,8 @@ Forge. Forge keeps the root workspace; this tab manages extra roots.
 - **Keep extra worktrees when archiving** is off by default, matching Forge's
   archive cleanup. Unless enabled, archiving removes clean, unlocked,
   unreferenced worktrees created here and keeps their branches.
-- The tab and these routes are unavailable when Forge is disabled; in that
-  case the old session-header panel remains. When Forge is active, the old
-  header button is hidden so there is one UI. No new model tools are added.
+- The Git/worktree/archive routes are unavailable when Forge is disabled; the
+  core tab remains usable. No new model tools are added.
 
 ## Troubleshooting
 

@@ -22,9 +22,10 @@ This plugin adds a **per-session, user-edited allow-list**:
 2. `AclWriteGrant.create(workspaceWriteSid(workspaceRoot)).add(dir)` → the
    same capability for new low-integrity processes.
 
-The list is edited from a modal panel opened by a button in
-`conversation.session.header.utilities` and persisted in the
-`extra_workspaces` storage domain.
+The list is edited from the **Extra workspaces** right-sidebar tab; the
+session-header button opens that tab. An inline modal remains only as the
+fallback when the right sidebar is unavailable. Configuration is persisted in
+the `extra_workspaces` storage domain.
 
 Non-goals: prompt-injection defense, hostile-local-process defense, read
 confinement, or replacing DSH's sandbox. This is an ergonomic extension of the
@@ -68,7 +69,7 @@ src/http.js              Host JSON route, token, body limit, error mapping
 src/forge/git.js         Read-only Git inspection for the optional Forge companion
 src/forge/run.js         Confined Git execution for extra worktree mutations
 src/forge/worktree.js    Extra worktree name/path/allocation/create/remove helpers
-client.js                Plain Module Loader factory: header button + modal editor
+client.js                Plain Module Loader factory: header button + right-sidebar tab + modal fallback
 locale/{en,zh}.json      Plugin Manager display metadata
 docs/DETAIL.md           Plugin Manager detail page
 tests/paths.test.mjs     Node test runner coverage for path parsing/safety
@@ -261,12 +262,14 @@ turns an accidental-write fence into a broad one. Add a test in
   equal the package name.
 - Registers one entry in `conversation.session.header.utilities`
   (`id: dsh-extraworkspace`, `order: 12`).
-- When `/bootstrap` reports `forge: true` and `ctx.get('sidebarRightTabs')`
-  exists, also registers an `Extra workspaces` tab in
-  `sidebar.right.pane.tab` and a guide entry. The tab shows read-only Git
-  state for extra roots; it is not registered when Forge is inactive. In that
-  case the companion replaces the old header button instead of adding a second
-  entry point; when Forge is inactive, the header button/modal is registered.
+- Registers one `Extra workspaces` tab in `sidebar.right.pane.tab` and a
+  guide entry for every profile. The header button opens that tab through
+  `ctx.sidebarRight.openTab()`; if the right sidebar is unavailable, it falls
+  back to the inline modal. There is one configuration surface in all cases.
+- The tab always embeds the core settings panel (add/remove/toggle/retry/fix
+  permissions). When `/bootstrap` reports `forge: true`, it additionally
+  mounts the Forge companion section (Git status, worktrees, archive switch).
+  The Git/worktree routes still reject requests when Forge is inactive.
 - `ExtraTab` calls `GET /state?refresh=1`, which runs `inspectGit()` on every
   enabled root. This is read-only Host Git, not the sandboxed write path.
 - The tab creates/removes extra worktrees through the Host routes and never
@@ -303,11 +306,11 @@ Before handing a change back:
    `dsh-extraworkspace` occupant, and (with Forge active) the
    `sidebar.right.pane.tab` slot has the
    `@dsh-external/dsh-extraworkspace/extra` occupant.
-6. In the running Web GUI, open a session, click the header button, add a
-   directory outside the workspace, and verify:
+6. In the running Web GUI, open a session, click the header button to open the
+   Extra workspaces tab, add a directory outside the workspace, and verify:
    - the file-tool grant works (`write` a file there);
    - the row shows **Files** and **Processes**;
-   - the modal reads correctly in light and dark themes.
+   - the tab reads correctly in light and dark themes.
 7. Remove the test directory and confirm the file-tool write is denied again.
 8. If testing the process grant, run `tests/acl-selftest.mjs` (manual; creates
    and cleans temp directories) or a small `AclSandbox` probe. Do not claim
@@ -367,3 +370,6 @@ Before handing a change back:
   `forgePanel`, extra worktree create/remove without changing cwd, archive
   cleanup with a Forge-like retain switch (default false), preference domain,
   and no new model tools.
+- `0.1.2` — one right-sidebar UI: the Extra workspaces tab always hosts the
+  core settings panel and the header button opens it; Forge only adds the Git
+  section. Adds the real archive harness.

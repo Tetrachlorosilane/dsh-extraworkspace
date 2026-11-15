@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-extraworkspace",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "Per-session extra workspaces for DeepSeek Harness on Windows: extend the file sandbox and the low-integrity process sandbox with configurable additional directories, edited from a visual session-header panel.",

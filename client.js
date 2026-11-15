@@ -108,7 +108,7 @@ window.__ModuleLoader__.load({
       unknownError: 'Unknown error',
       pathCopied: 'Path copied.',
       forgeTabTitle: 'Extra workspaces',
-      forgeTabGuide: 'Status of the extra Git repositories and worktrees this session may write to.',
+      forgeTabGuide: 'Manage extra workspaces here; with Forge, inspect their Git repositories and worktrees.',
       forgeTabIntro: 'The same right-sidebar page as Forge. Forge keeps the root workspace; this tab manages extra workspaces.',
       forgeTabRoot: 'Root workspace',
       forgeTabRootNote: 'PR review and root worktrees are managed by Forge.',
@@ -242,7 +242,7 @@ window.__ModuleLoader__.load({
       unknownError: '未知错误',
       pathCopied: '路径已复制。',
       forgeTabTitle: '额外工作区',
-      forgeTabGuide: '查看此会话可写入的额外 Git 仓库与工作树状态。',
+      forgeTabGuide: '在此管理额外工作区；启用 Forge 时可查看 Git 仓库与工作树。',
       forgeTabIntro: '与 Forge 共用一个右侧栏页面。Forge 管理根工作区；此标签管理额外工作区。',
       forgeTabRoot: '根工作区',
       forgeTabRootNote: 'PR 审阅与根工作树由 Forge 管理。',
@@ -842,6 +842,29 @@ window.__ModuleLoader__.load({
 .dsh-xw-tab-retain input {
   margin-top: 2px;
 }
+.dsh-xw-tab-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  overflow: auto;
+}
+.dsh-xw-tab-shell .dsh-xw-tab {
+  height: auto;
+  padding: 0;
+  overflow: visible;
+}
+.dsh-xw-modal-embedded {
+  width: 100%;
+  max-height: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 `
 
     function errorText(error) {
@@ -1337,8 +1360,15 @@ window.__ModuleLoader__.load({
         error !== '' ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'error', role: 'alert' }, t('forgeTabFailed', { error })) : null)
     }
 
+    function RightbarTab(props) {
+      return h('div', { className: 'dsh-xw-tab-shell' },
+        bootstrapInfo?.forge === true ? h(ExtraTab, props) : null,
+        h(Panel, { ...props, embedded: true }))
+    }
+
     function Panel(props) {
       const { sessionId } = props
+      const embedded = props.embedded === true
       const t = runtime.t
       const [, forceRender] = React.useReducer((value) => value + 1, 0)
       React.useEffect(() => {
@@ -1346,7 +1376,8 @@ window.__ModuleLoader__.load({
         return runtime.ctx.locale.subscribe(() => forceRender())
       }, [])
 
-      const [open, setOpen] = React.useState(false)
+      const [openState, setOpen] = React.useState(false)
+      const open = embedded || openState
       const [state, setState] = React.useState(null)
       const [loading, setLoading] = React.useState(false)
       const [busy, setBusy] = React.useState('')
@@ -1400,15 +1431,16 @@ window.__ModuleLoader__.load({
           return undefined
         }
         void load()
+        if (embedded) return undefined
         const previousOverflow = document.body.style.overflow
         document.body.style.overflow = 'hidden'
         return () => {
           document.body.style.overflow = previousOverflow
         }
-      }, [open, load])
+      }, [open, embedded, load])
 
       React.useEffect(() => {
-        if (!open) return undefined
+        if (!open || embedded) return undefined
         const previous = document.activeElement
         const node = dialogRef.current
         const focusable = node === null ? [] : Array.from(node.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], select, textarea, [tabindex]:not([tabindex="-1"])'))
@@ -1644,9 +1676,17 @@ window.__ModuleLoader__.load({
         className: 'dsh-xw-button',
         title: t('buttonTitle'),
         'aria-label': count > 0 ? t('buttonLabelCount', { count }) : t('buttonLabel'),
-        'aria-haspopup': 'dialog',
+        'aria-haspopup': typeof props.openTab === 'function' ? 'true' : 'dialog',
         'aria-expanded': open,
         onClick: () => {
+          if (typeof props.openTab === 'function') {
+            try {
+              props.openTab()
+              return
+            } catch {
+              // Fall back to the inline modal when the right sidebar is unavailable.
+            }
+          }
           setOpen((value) => !value)
           setError('')
           setNotice(null)
@@ -1657,28 +1697,19 @@ window.__ModuleLoader__.load({
 
       if (!open) return button
 
-      const modal = ReactDOM.createPortal(
-        h('div', {
-          className: 'dsh-xw-backdrop',
-          onMouseDown: (event) => {
-            if (event.target === event.currentTarget) setOpen(false)
-          },
-        },
-        h('div', {
-          className: 'dsh-xw-modal',
-          role: 'dialog',
-          'aria-modal': 'true',
-          'aria-labelledby': 'dsh-xw-title',
-          'aria-describedby': 'dsh-xw-intro',
-          ref: dialogRef,
-        },
-        h('div', { className: 'dsh-xw-header' },
+      const dialog = h('div', {
+        className: embedded ? 'dsh-xw-modal dsh-xw-modal-embedded' : 'dsh-xw-modal',
+        role: embedded ? 'region' : 'dialog',
+        ...embedded ? {} : { 'aria-modal': 'true', 'aria-labelledby': 'dsh-xw-title', 'aria-describedby': 'dsh-xw-intro' },
+        ref: dialogRef,
+      },
+        embedded ? null : h('div', { className: 'dsh-xw-header' },
           h('div', { className: 'dsh-xw-header-main' },
             h('div', { className: 'dsh-xw-mark' }, h(IconFolder, { size: 20 })),
             h('div', null,
               h('h2', { id: 'dsh-xw-title', className: 'dsh-xw-title' }, t('title')),
               h('p', { id: 'dsh-xw-intro', className: 'dsh-xw-subtitle' }, t('intro')))),
-          h('button', {
+          embedded ? null : h('button', {
             type: 'button',
             className: 'dsh-xw-icon-btn',
             title: t('close'),
@@ -1809,20 +1840,29 @@ window.__ModuleLoader__.load({
           : null,
         error !== '' ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'error', role: 'alert' }, error) : null,
 
-        h('div', { className: 'dsh-xw-footer' }, t('footer')))),
-        document.body,
-      )
+        h('div', { className: 'dsh-xw-footer' }, t('footer')))
 
-      return h(React.Fragment, null, button, modal)
+      const modal = embedded
+        ? dialog
+        : ReactDOM.createPortal(
+          h('div', {
+            className: 'dsh-xw-backdrop',
+            onMouseDown: (event) => {
+              if (event.target === event.currentTarget) setOpen(false)
+            },
+          }, dialog),
+          document.body,
+        )
+
+      return embedded ? modal : h(React.Fragment, null, button, modal)
     }
 
-    async function installForgeTab(ctx) {
+    async function installRightbar(ctx) {
       try {
         await ensureToken()
-        if (bootstrapInfo?.forge !== true) return false
         const tabs = ctx.get('sidebarRightTabs')
         if (tabs === undefined) {
-          console.warn('dsh-extraworkspace: forge is active but sidebarRightTabs is unavailable; the Extra workspaces tab was not registered.')
+          console.warn('dsh-extraworkspace: sidebarRightTabs is unavailable; the Extra workspaces tab was not registered.')
           return false
         }
         const id = '@dsh-external/dsh-extraworkspace/extra'
@@ -1842,7 +1882,7 @@ window.__ModuleLoader__.load({
           name: 'sidebar.right.pane.tab',
           key: id,
           locale: NS,
-        }, ExtraTab))
+        }, RightbarTab))
         return true
       } catch (error) {
         console.warn('dsh-extraworkspace: could not register the Extra workspaces tab:', error)
@@ -1861,15 +1901,20 @@ window.__ModuleLoader__.load({
           return () => element.remove()
         }, 'dsh-extraworkspace styles')
         runtime = { ctx, t: ctx.locale.bind(NS) }
-        const companion = await installForgeTab(ctx)
-        if (!companion) {
-          ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
-            name: 'conversation.session.header.utilities',
-            id: 'dsh-extraworkspace',
-            order: 12,
-            label: () => runtime.t('buttonLabel'),
-          }, Panel))
-        }
+        const rightbar = await installRightbar(ctx)
+        const openTab = rightbar
+          ? () => {
+            const sidebar = ctx.get('sidebarRight')
+            if (sidebar === undefined) throw new Error('right sidebar is unavailable')
+            sidebar.openTab('dsh-extraworkspace')
+          }
+          : undefined
+        ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+          name: 'conversation.session.header.utilities',
+          id: 'dsh-extraworkspace',
+          order: 12,
+          label: () => runtime.t('buttonLabel'),
+        }, (props) => h(Panel, { ...props, openTab })))
       },
     }
   },

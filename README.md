@@ -94,15 +94,16 @@ contains the session workspace is refused.
 
 ## Forge companion (optional)
 
-When `@deepseek-ai/dsh-experimental-forge-bundle` is active, the browser
-half also registers an **Extra workspaces** tab in the same right-sidebar tab
-strip as the Forge panel. The tab is gated on the Host reporting
-`forge: true` from `/bootstrap`; when Forge is disabled it is not
-registered and the existing session-header panel remains the only UI. When
-Forge is active, the old header button is **not** registered, so the tab is the
-only extra-workspace UI and there is no duplicate entry point.
+The browser half registers one **Extra workspaces** tab in the right-sidebar
+tab strip for every profile. The session-header button always opens that tab;
+it is the single configuration surface. If the right-sidebar service is
+unavailable, the header button falls back to the inline modal.
 
-The companion tab shows and manages the extra roots:
+The tab always provides the core extra-workspace management: add, remove,
+enable/disable, retry, and fix permissions.
+
+When `@deepseek-ai/dsh-experimental-forge-bundle` is active, the tab also shows
+the Forge companion section:
 
 - the root workspace and a note that Forge owns its PR review and worktrees;
 - each extra workspace with its detected kind (directory, Git repository, or
@@ -123,10 +124,12 @@ The extra-worktree feature is only available for a repository **root** added as
 an extra workspace. A subdirectory or a linked worktree needs the shared Git
 directory as a separate grant and is rejected with an explanatory error.
 
-The companion adds **no model-facing tools**. The model keeps the same
-`bash`/`write` surface and a stable list of approved extra roots; Forge keeps
-its `create_worktree` tool for the root workspace. Enabling or disabling Forge
-after the page loaded requires a page refresh for the tab to appear or leave.
+The Git/worktree/archive routes are rejected when Forge is inactive; the core
+tab stays usable. The companion adds **no model-facing tools**. The model keeps
+the same `bash`/`write` surface and a stable list of approved extra roots;
+Forge keeps its `create_worktree` tool for the root workspace. Enabling or
+disabling Forge after the page loaded requires a page refresh for the Git
+section to appear or leave.
 
 ## Limitations
 
