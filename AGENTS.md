@@ -61,7 +61,7 @@ across unrelated DSH releases.
 ```
 index.js                 Host entry: lifecycle, agent events, route, prompt context
 src/paths.js             Path intake: drive/UNC/Cygwin/MSYS/WSL/URI/env/relative; safety checks
-src/acl.js               Ref-counted Windows ACL grants; exact deny cleanup via Windows PowerShell
+src/acl.js               Ref-counted Windows ACL grants; native icacls deny cleanup
 src/store.js             storage-domain declaration + memory fallback
 src/manager.js           Per-session orchestration, serialized mutations, public panel state
 src/http.js              Host JSON route, token, body limit, error mapping
@@ -69,6 +69,7 @@ client.js                Plain Module Loader factory: header button + modal edit
 locale/{en,zh}.json      Plugin Manager display metadata
 docs/DETAIL.md           Plugin Manager detail page
 tests/paths.test.mjs     Node test runner coverage for path parsing/safety
+tests/acl-selftest.mjs   Manual AclSandbox probe for the process grant
 ```
 
 There is no build step. `package.json` has `"type": "module"`; `index.js`,
@@ -121,11 +122,15 @@ file-tool capability.
   capability ACE and clears the Low label only when no foreign capability grant
   remains (DSH's `revokeWrite` behavior).
 - The grant also adds `Everyone:(CI)(DENY)(DC)`. DSH's revoke path does **not**
-  remove that deny. `src/acl.js` remembers whether the directory already had
-  the exact deny before the first grant and, if not, removes only the exact
-  rule via a Windows PowerShell `FileSystemAccessRule` round-trip. Do not
-  replace this with `icacls /remove:d *S-1-1-0`: that removes every Everyone
-  deny, including pre-existing ones.
+  remove that deny. A .NET `FileSystemAccessRule` / `Set-Acl` round-trip is not
+  reliable here: the merged ACL can be non-canonical (so `RemoveAccessRule`
+  throws), and writing the SACL asks for `SeSecurityPrivilege`, which the Host
+  process does not hold. `src/acl.js` therefore records whether the exact deny
+  existed before the first grant and, when it did not, removes the deny with
+  native `icacls <dir> /remove:d *S-1-1-0`. That command removes every
+  `Everyone` deny on the directory, including duplicates the grant merge can
+  produce on a re-grant; the pre-existence check is what makes that safe. Do not
+  remove the check or substitute a broad `icacls` call.
 - If the deny inspection fails, the manager treats the deny as pre-existing and
   leaves it. Conservative residue is better than removing a user's security
   control.
@@ -210,7 +215,8 @@ turns an accidental-write fence into a broad one. Add a test in
   `WorkspaceEntryNotFoundError`, `SessionNotFoundError`, and `HttpError`.
 - The token is per Host process. The Client retries once after a 401, which
   covers a Host restart. The bootstrap response is same-origin only; no CORS
-  headers are set.
+  headers are set. The route accepts loopback peers only (`LOCAL_ONLY` otherwise),
+  so an unauthenticated bootstrap token cannot be reused from a LAN client.
 - This route exists because a static Client plugin cannot use the dynamic
   package-private `host.call` bridge. Do not replace it with a dynamic Cordis
   package just to call Host methods; that changes the plugin's lifecycle and
@@ -263,9 +269,14 @@ Before handing a change back:
 
 ## 12. Known pitfalls
 
-- **Bare imports are supplied by DSH's profile resolver.** Do not add
-  `node_modules` copies of `@deepseek-ai/*` packages. `zod` is supplied through
-  the installation dependency closure; a local copy can shadow it.
+- **Bare imports are supplied by DSH's profile resolver, but only when the
+  linked package declares the name as a peer dependency.** A linked profile
+  package routes installation packages only for names in its own
+  `peerDependencies`. Add every bare `@deepseek-ai/...` and `zod` import there;
+  otherwise activation fails with `ERR_MODULE_NOT_FOUND` even though the
+  package exists in the installation. Do not add `node_modules` copies of
+  `@deepseek-ai/*` packages; a local `zod` copy can also shadow the
+  installation one.
 - **`ctx.sandboxPolicy.registerWritableRoot` is effect-owned by the policy
   service, not the plugin.** Keep its disposer and call it on session detach /
   plugin unload. Do not rely on plugin unload alone.
@@ -287,6 +298,9 @@ Before handing a change back:
   user's patch layer.
 - **PowerShell helper quoting.** The directory always travels through
   `DshXwPath`; never interpolate it into the command string.
+- **Client bundles are cached in the page.** Disabling/re-enabling the Host row
+  does not reload the browser half; refresh the page after editing `client.js`
+  unless the client HMR watcher is running.
 - **ACL cleanup on plugin reload.** Existing grants are standing edits; if the
   plugin crashes before revoking, the next install recreates/uses them
   idempotently. A stale grant for a directory removed while the plugin was

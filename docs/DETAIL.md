@@ -63,6 +63,10 @@ workspace is refused.
 - This is an extension of DSH's accidental-write sandbox. It is not a defense
   against prompt injection, a hostile local process, or a user intentionally
   widening the sandbox, and it does not restrict reads (Windows never did).
+- The panel is local-only: the Host route accepts loopback peers only. The
+  Desktop default is loopback; a remotely exposed Web host cannot drive it.
+- Forked and subagent sessions are new sessions: configure their own list.
+  Resumed sessions restore their saved list.
 
 ## Troubleshooting
 
@@ -73,4 +77,5 @@ workspace is refused.
   use **Retry**.
 - **Read-only warning**: switch the session to `workspace-write` with the
   composer's permission control.
-- **No button**: the session has ended, or the Host is not Windows.
+- **No button**: the session has ended, or the Host row is disabled (the Host
+  is not Windows).

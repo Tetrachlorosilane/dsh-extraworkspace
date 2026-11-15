@@ -18,6 +18,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 
 let aclModulePromise
@@ -108,34 +109,31 @@ if ($matches.Count -gt 0) { '1' } else { '0' }
 }
 
 /**
- * Remove the exact ambient-delete deny this plugin's grant added. This runs
- * only when the directory had no identical deny before the first grant.
+ * Remove DSH's ambient-delete deny from the directory.
+ *
+ * `icacls /remove:d` is deliberate: the ACL produced by the grant merge is not
+ * always canonical, so .NET's `FileSystemAccessRule` round-trip throws
+ * "ACL is not in canonical form", and `Set-Acl` also asks for
+ * `SeSecurityPrivilege` once any SACL is present. `icacls` edits the DACL
+ * through the native APIs, handles the non-canonical shape, and needs only the
+ * owner's `WRITE_DAC`. It removes every `Everyone` deny on the directory, which
+ * is why the caller first verifies that no identical deny existed before the
+ * plugin granted the directory.
  * @param {string} directory - absolute directory path.
  * @returns {Promise<void>} resolution after the DACL is written.
  */
 async function removeEveryoneDeleteDeny(directory) {
-  const script = String.raw`
-$ErrorActionPreference = 'Stop'
-$target = $env:DshXwPath
-$acl = Get-Acl -LiteralPath $target
-$rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
-  [System.Security.Principal.SecurityIdentifier]::new('S-1-1-0'),
-  [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles,
-  [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
-  [System.Security.AccessControl.PropagationFlags]::None,
-  [System.Security.AccessControl.AccessControlType]::Deny)
-$removed = $acl.RemoveAccessRule($rule)
-if ($removed) {
-  Set-Acl -LiteralPath $target -AclObject $acl
-}
-`
-  // A directory that vanished between grant and revoke has no ACL left to
-  // clean; the caller treats that as a successful no-op.
-  try {
-    runPowerShell(script, { DshXwPath: directory })
-  } catch (error) {
-    if (error instanceof Error && /does not exist|cannot find|找不到|不存在/iu.test(error.message)) return
-    throw error
+  if (!existsSync(directory)) return
+  const result = spawnSync('icacls', [directory, '/remove:d', '*S-1-1-0'], {
+    encoding: 'utf8',
+    timeout: 20_000,
+    windowsHide: true,
+    maxBuffer: 1_048_576,
+  })
+  if (result.error !== undefined) throw result.error
+  if (result.status !== 0) {
+    const detail = `${result.stderr || result.stdout || ''}`.trim() || `icacls exited with ${String(result.status)}`
+    throw new Error(`icacls could not remove the plugin's Everyone deny on ${directory}: ${detail}`)
   }
 }
 

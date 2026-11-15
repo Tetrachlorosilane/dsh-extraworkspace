@@ -212,7 +212,7 @@ export class ExtraWorkspaceManager {
    * @returns {Promise<object>} applied record with `status`.
    */
   async #applyRoot(state, record) {
-    /** @type {{ state: string, fileTools: string, processes: string, error?: string, warnings: string[] }} */
+    /** @type {{ state: string, fileTools: string, processes: string, error?: string, errorCode?: string, warnings: string[] }} */
     const status = { state: 'inactive', fileTools: 'inactive', processes: process.platform === 'win32' ? 'inactive' : 'unsupported', warnings: [] }
     if (!record.enabled) {
       status.state = 'disabled'
@@ -227,6 +227,7 @@ export class ExtraWorkspaceManager {
       })
     } catch (error) {
       status.state = error instanceof WorkspacePathError && error.code === 'NOT_FOUND' ? 'missing' : 'error'
+      status.errorCode = error instanceof WorkspacePathError ? error.code : 'PATH_ERROR'
       status.error = messageOf(error)
       return { record, status }
     }
@@ -238,6 +239,7 @@ export class ExtraWorkspaceManager {
       status.fileTools = 'active'
     } catch (error) {
       status.state = 'error'
+      status.errorCode = 'FILE_GRANT_FAILED'
       status.error = messageOf(error)
       return { record, status }
     }
@@ -251,7 +253,8 @@ export class ExtraWorkspaceManager {
       } catch (error) {
         status.processes = 'error'
         status.state = 'partial'
-        status.error = `The file grant is active, but the Windows process grant failed: ${messageOf(error)}`
+        status.errorCode = 'PROCESS_GRANT_FAILED'
+        status.error = messageOf(error)
       }
     } else {
       status.state = 'active'
@@ -491,6 +494,7 @@ export class ExtraWorkspaceManager {
           fileTools: exists ? status.fileTools : 'inactive',
           processes: exists ? status.processes : 'inactive',
           error: status.error ?? null,
+          errorCode: status.errorCode ?? null,
           warnings: status.warnings ?? [],
         },
       }

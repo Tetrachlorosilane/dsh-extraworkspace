@@ -92,8 +92,9 @@ contains the session workspace is refused.
 
 ## Limitations
 
-- Windows only. The host row is disabled on other platforms, and the client
-  button does not appear on non-Windows hosts.
+- Windows only. The host row is disabled on other platforms. A custom
+  composition that still loads the client half shows the button, but the panel
+  reports that the host route is unavailable because no Windows grants exist.
 - The process extension is a deliberate use of DSH's internal
   `@deepseek-ai/dsh-sandbox-windows-acl` grant API. It is pinned to the DSH
   release tested here. Re-verify it after a DSH upgrade.
@@ -107,8 +108,14 @@ contains the session workspace is refused.
   a user who intentionally broadens the sandbox. It only lets the user widen
   the accidental-write fence for a chosen session.
 - Reads were never confined on Windows. This plugin does not change that.
+- The panel is local-only: the route accepts loopback peers only, matching the
+  Desktop default. A DSH Web host exposed on a LAN address keeps its normal
+  authentication for the agent, but the extra-workspaces panel cannot be driven
+  from that remote client.
 - The panel is per live session. Archived sessions can be resumed, and their
-  saved allow-list is restored on resume.
+  saved allow-list is restored on resume. A forked or subagent session is a new
+  session and starts with an empty allow-list; configure it separately if it
+  needs the same directories.
 
 ## Development
 

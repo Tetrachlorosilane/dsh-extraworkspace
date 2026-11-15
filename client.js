@@ -17,6 +17,7 @@ window.__ModuleLoader__.load({
 
     const EN = {
       buttonLabel: 'Extra workspaces',
+      buttonLabelCount: 'Extra workspaces, {count} active',
       buttonTitle: 'Configure extra workspaces for this session',
       title: 'Extra workspaces',
       intro: 'Allow this session to write into additional directories. File tools and new sandboxed commands use the same per-session grant.',
@@ -28,6 +29,9 @@ window.__ModuleLoader__.load({
       modeDanger: 'danger-full-access',
       saved: 'Configured workspaces',
       refresh: 'Refresh',
+      loading: 'Loading…',
+      enable: 'Enable this workspace',
+      disable: 'Disable this workspace',
       empty: 'No extra workspaces yet. Add one below.',
       addTitle: 'Add a workspace',
       pathLabel: 'Directory',
@@ -49,13 +53,15 @@ window.__ModuleLoader__.load({
       badgeProcessesUnsupported: 'Process grant unavailable',
       badgeFilesError: 'File grant error',
       badgeMissing: 'Missing',
+      badgeReadOnlyInactive: 'Inactive (read-only)',
+      badgeDanger: 'Sandbox off',
       retry: 'Retry',
       remove: 'Remove',
       confirm: 'Confirm',
       cancel: 'Cancel',
       footer: 'Changes apply to new file operations and new sandboxed commands. Running commands keep their previous permissions. Removing an entry revokes the Windows ACL grant it added.',
       unsupported: 'This host is not Windows; the process grant is unavailable.',
-      readOnlyWarning: 'The session is read-only. Extra workspaces are saved but stay inactive until you switch to workspace-write.',
+      readOnlyWarning: 'The session is read-only. Extra workspaces are saved and their ACL grants are applied immediately, but writes stay denied until you switch to workspace-write.',
       dangerNotice: 'Danger-full-access is active; the sandbox is not restricting writes and these grants are not needed.',
       memoryWarning: 'The storage domain is unavailable. Configuration is kept only until the Host restarts.',
       loadFailed: 'Could not load the configuration: {error}',
@@ -65,16 +71,40 @@ window.__ModuleLoader__.load({
       removeSuccess: 'Removed {path}.',
       toggleSuccess: 'Updated {path}.',
       retrySuccess: 'Retried {path}.',
-      retryFailed: 'Retry finished with an error: {error}',
+      retryFailed: 'Retry failed: {error}',
+      enabledSuccess: 'Enabled {path}.',
+      disabledSuccess: 'Disabled {path}; its grants were revoked.',
+      processGrantFailed: 'The Windows process grant failed.',
+      fileGrantFailed: 'The file-tool grant failed.',
+      errorNotFound: 'The directory does not exist.',
+      errorNotDirectory: 'The path is not a directory.',
+      errorSymlink: 'The path is a symbolic link or junction; use the physical directory.',
+      errorDriveRoot: 'A drive root cannot be granted.',
+      errorProtected: 'This is a protected system or installation directory.',
+      errorWorkspace: 'The path is the session workspace, inside it, or contains it.',
+      errorUnknownVariable: 'The path contains an unknown environment variable.',
+      errorDriveRelative: 'Drive-relative paths such as C:folder are not supported.',
+      errorDevicePath: 'Device paths are not supported.',
+      errorDuplicate: 'This directory is already configured for the session.',
+      errorEntryMissing: 'That workspace entry no longer exists.',
+      errorUnauthorized: 'The panel token is invalid; reload the page.',
+      errorLocalOnly: 'The panel is available only to local connections.',
+      errorApplyFailed: 'The sandbox grant could not be applied.',
+      errorTooLarge: 'The request is too large.',
+      errorInvalidRequest: 'The request was rejected.',
+      errorInternal: 'The host reported an internal error.',
+      errorPathInvalid: 'The directory address is invalid.',
       browseUnavailable: 'The host has no directory picker.',
       sessionMissing: 'The session is not available.',
       previewFailed: 'Cannot use this directory: {error}',
+      loadFailedShort: 'Configuration unavailable.',
       unknownError: 'Unknown error',
       pathCopied: 'Path copied.',
     }
 
     const ZH = {
       buttonLabel: '额外工作区',
+      buttonLabelCount: '额外工作区，{count} 个已启用',
       buttonTitle: '为此会话配置额外工作区',
       title: '额外工作区',
       intro: '允许此会话写入更多目录。文件工具与新建的沙箱命令使用同一份会话级授权。',
@@ -86,6 +116,9 @@ window.__ModuleLoader__.load({
       modeDanger: '完全访问',
       saved: '已配置的工作区',
       refresh: '刷新',
+      loading: '读取中…',
+      enable: '启用此工作区',
+      disable: '停用此工作区',
       empty: '还没有额外工作区，请在下方添加。',
       addTitle: '添加工作区',
       pathLabel: '目录',
@@ -107,13 +140,15 @@ window.__ModuleLoader__.load({
       badgeProcessesUnsupported: '进程授权不可用',
       badgeFilesError: '文件授权失败',
       badgeMissing: '目录不存在',
+      badgeReadOnlyInactive: '未生效（只读）',
+      badgeDanger: '沙箱未启用',
       retry: '重试',
       remove: '移除',
       confirm: '确认移除',
       cancel: '取消',
       footer: '更改会应用到新的文件操作与新的沙箱命令；已在运行的命令保持原有权限。移除条目会撤销它添加的 Windows ACL 授权。',
       unsupported: '当前宿主不是 Windows；进程授权不可用。',
-      readOnlyWarning: '会话当前为只读。额外工作区会被保存，但切换到“工作区可写”前不会生效。',
+      readOnlyWarning: '会话当前为只读。额外工作区会被保存，且 ACL 授权会立即应用，但切换到“工作区可写”前写入仍会被拒绝。',
       dangerNotice: '当前为完全访问；沙箱不再限制写入，这些授权无需生效。',
       memoryWarning: '存储域不可用，本次配置只在宿主重启前有效。',
       loadFailed: '读取配置失败：{error}',
@@ -123,10 +158,33 @@ window.__ModuleLoader__.load({
       removeSuccess: '已移除 {path}。',
       toggleSuccess: '已更新 {path}。',
       retrySuccess: '已重试 {path}。',
-      retryFailed: '重试后仍有错误：{error}',
+      retryFailed: '重试失败：{error}',
+      enabledSuccess: '已启用 {path}。',
+      disabledSuccess: '已停用 {path}，相关授权已撤销。',
+      processGrantFailed: 'Windows 进程授权失败。',
+      fileGrantFailed: '文件工具授权失败。',
+      errorNotFound: '目录不存在。',
+      errorNotDirectory: '该路径不是目录。',
+      errorSymlink: '该路径是符号链接或联接点，请使用物理目录。',
+      errorDriveRoot: '不能授权整个盘符根目录。',
+      errorProtected: '这是受保护的系统目录或安装目录。',
+      errorWorkspace: '该路径是会话工作区、位于其中，或包含会话工作区。',
+      errorUnknownVariable: '路径包含未知的环境变量。',
+      errorDriveRelative: '不支持 C:folder 这类驱动器相对路径。',
+      errorDevicePath: '不支持设备路径。',
+      errorDuplicate: '该目录已在此会话中配置。',
+      errorEntryMissing: '该工作区条目已不存在。',
+      errorUnauthorized: '面板令牌无效，请刷新页面。',
+      errorLocalOnly: '面板仅允许本机连接。',
+      errorApplyFailed: '无法应用沙箱授权。',
+      errorTooLarge: '请求内容过大。',
+      errorInvalidRequest: '请求被拒绝。',
+      errorInternal: '宿主报告了内部错误。',
+      errorPathInvalid: '目录地址无效。',
       browseUnavailable: '宿主没有目录选择器。',
       sessionMissing: '会话不可用。',
       previewFailed: '无法使用该目录：{error}',
+      loadFailedShort: '配置不可用。',
       unknownError: '未知错误',
       pathCopied: '路径已复制。',
     }
@@ -175,7 +233,7 @@ window.__ModuleLoader__.load({
 .dsh-xw-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 1200;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -190,10 +248,10 @@ window.__ModuleLoader__.load({
   box-sizing: border-box;
   padding: 20px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-panel, 12px);
   background: var(--dsw-alias-bg-overlay);
   color: var(--dsw-alias-label-primary);
-  box-shadow: 0 24px 80px color-mix(in srgb, var(--dsw-alias-label-primary) 22%, transparent);
+  box-shadow: var(--dsw-shadow-lv3, 0 24px 80px rgba(0, 0, 0, 0.35));
   font-size: 13px;
   line-height: 1.5;
 }
@@ -251,6 +309,7 @@ window.__ModuleLoader__.load({
   letter-spacing: 0.04em;
 }
 .dsh-xw-mono {
+  overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
 }
@@ -380,6 +439,9 @@ window.__ModuleLoader__.load({
 .dsh-xw-notice[data-kind="success"] {
   color: var(--dsw-alias-state-success-primary);
   border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 40%, var(--dsw-alias-border-l1));
+}
+.dsh-xw-notice[data-kind="muted"] {
+  color: var(--dsw-alias-label-secondary);
 }
 .dsh-xw-form {
   display: grid;
@@ -573,6 +635,44 @@ window.__ModuleLoader__.load({
       return String(error ?? '')
     }
 
+    const ERROR_KEY_BY_CODE = {
+      NOT_FOUND: 'errorNotFound',
+      NOT_DIRECTORY: 'errorNotDirectory',
+      SYMLINK: 'errorSymlink',
+      DRIVE_ROOT: 'errorDriveRoot',
+      PROTECTED_SYSTEM_PATH: 'errorProtected',
+      INSIDE_WORKSPACE: 'errorWorkspace',
+      WORKSPACE_SUBDIRECTORY: 'errorWorkspace',
+      UNKNOWN_VARIABLE: 'errorUnknownVariable',
+      DRIVE_RELATIVE: 'errorDriveRelative',
+      DEVICE_PATH: 'errorDevicePath',
+      DUPLICATE: 'errorDuplicate',
+      ENTRY_NOT_FOUND: 'errorEntryMissing',
+      SESSION_NOT_FOUND: 'sessionMissing',
+      UNAUTHORIZED: 'errorUnauthorized',
+      LOCAL_ONLY: 'errorLocalOnly',
+      APPLY_FAILED: 'errorApplyFailed',
+      BODY_TOO_LARGE: 'errorTooLarge',
+      INVALID_JSON: 'errorInvalidRequest',
+      INVALID_ARGUMENT: 'errorInvalidRequest',
+      INTERNAL: 'errorInternal',
+      FILE_GRANT_FAILED: 'fileGrantFailed',
+      PROCESS_GRANT_FAILED: 'processGrantFailed',
+      PATH_ERROR: 'errorPathInvalid',
+    }
+
+    function hostErrorText(error, t) {
+      const code = error && typeof error === 'object' ? error.code : undefined
+      const key = code === undefined ? undefined : ERROR_KEY_BY_CODE[code]
+      return key === undefined ? errorText(error) : t(key)
+    }
+
+    function statusErrorText(status, t) {
+      const code = status && typeof status === 'object' ? status.errorCode : undefined
+      const key = code === undefined ? undefined : ERROR_KEY_BY_CODE[code]
+      return key === undefined ? (status?.error ?? '') : t(key)
+    }
+
     function basename(path) {
       const value = String(path ?? '')
       const parts = value.split(/[\\/]/)
@@ -645,7 +745,11 @@ window.__ModuleLoader__.load({
       try {
         return await requestOnce(path, options)
       } catch (error) {
-        if (error && error.status === 401) return requestOnce(path, options)
+        if (error && error.status === 401) {
+          token = ''
+          tokenPromise = null
+          return requestOnce(path, options)
+        }
         throw error
       }
     }
@@ -682,10 +786,23 @@ window.__ModuleLoader__.load({
       return h('span', { className: 'dsh-xw-badge', 'data-tone': tone }, children)
     }
 
-    function badgesFor(root, t) {
+    function badgesFor(root, t, mode) {
       const badges = []
       if (!root.enabled) {
         badges.push(h(Badge, { key: 'disabled', tone: 'muted' }, t('badgeDisabled')))
+        if (!root.exists) badges.push(h(Badge, { key: 'missing', tone: 'error' }, t('badgeMissing')))
+        return badges
+      }
+      if (!root.exists) {
+        badges.push(h(Badge, { key: 'missing', tone: 'error' }, t('badgeMissing')))
+        return badges
+      }
+      if (mode === 'read-only') {
+        badges.push(h(Badge, { key: 'read-only', tone: 'warn' }, t('badgeReadOnlyInactive')))
+        return badges
+      }
+      if (mode === 'danger-full-access') {
+        badges.push(h(Badge, { key: 'danger', tone: 'muted' }, t('badgeDanger')))
         return badges
       }
       if (root.status.fileTools === 'error') {
@@ -700,22 +817,22 @@ window.__ModuleLoader__.load({
       } else if (root.status.processes === 'unsupported') {
         badges.push(h(Badge, { key: 'processes-unsupported', tone: 'muted' }, t('badgeProcessesUnsupported')))
       }
-      if (!root.exists) {
-        badges.push(h(Badge, { key: 'missing', tone: 'error' }, t('badgeMissing')))
-      }
       return badges
     }
 
-    function RootRow({ root, t, busy, confirmRemove, setConfirmRemove, onToggle, onRemove, onRetry }) {
-      const working = busy === root.id
+    function RootRow({ root, t, mode, busy, confirmRemove, setConfirmRemove, onToggle, onRemove, onRetry }) {
       const showRetry = root.enabled && (root.status.state === 'error' || root.status.state === 'partial' || root.status.state === 'missing')
+      const localizedError = root.status.error ? statusErrorText(root.status, t) : ''
+      const showRawDetail = root.status.errorCode === 'PROCESS_GRANT_FAILED' || root.status.errorCode === 'FILE_GRANT_FAILED'
+      const rawDetail = showRawDetail && root.status.error && localizedError !== root.status.error ? root.status.error : ''
       return h('div', { className: 'dsh-xw-row' },
         h('div', { className: 'dsh-xw-row-main' },
           h('div', { className: 'dsh-xw-row-title' },
             h('span', null, root.label || basename(root.path)),
-            h('div', { className: 'dsh-xw-badges' }, ...badgesFor(root, t))),
+            h('div', { className: 'dsh-xw-badges' }, ...badgesFor(root, t, mode))),
           h('div', { className: 'dsh-xw-mono dsh-xw-row-path', title: root.path }, root.path),
-          root.status.error ? h('div', { className: 'dsh-xw-error' }, root.status.error) : null,
+          root.status.error ? h('div', { className: 'dsh-xw-error' }, localizedError) : null,
+          rawDetail !== '' ? h('div', { className: 'dsh-xw-hint' }, rawDetail) : null,
           ...(root.status.warnings ?? []).map((warning, index) => h('div', { key: `warning-${index}`, className: 'dsh-xw-warn' }, warning))),
         h('div', { className: 'dsh-xw-row-actions' },
           h('button', {
@@ -723,8 +840,8 @@ window.__ModuleLoader__.load({
             className: 'dsh-xw-switch',
             role: 'switch',
             'aria-checked': root.enabled,
-            'aria-label': root.enabled ? t('badgeDisabled') : t('badgeFiles'),
-            title: root.enabled ? t('badgeDisabled') : t('badgeFiles'),
+            'aria-label': root.label || basename(root.path),
+            title: root.enabled ? t('disable') : t('enable'),
             disabled: busy !== '',
             onClick: () => onToggle(root),
           }),
@@ -781,27 +898,44 @@ window.__ModuleLoader__.load({
       const [previewBusy, setPreviewBusy] = React.useState(false)
       const [confirmRemove, setConfirmRemove] = React.useState('')
       const dialogRef = React.useRef(null)
+      const loadSeq = React.useRef(0)
+      const previewSeq = React.useRef(0)
 
       const load = React.useCallback(async () => {
         if (sessionId === undefined || sessionId === null) return
+        const sequence = ++loadSeq.current
         setLoading(true)
         setError('')
         try {
           const next = await request('/state', { query: { sessionId } })
+          if (loadSeq.current !== sequence) return
           setState(next)
         } catch (loadError) {
-          setError(t('loadFailed', { error: errorText(loadError) }))
+          if (loadSeq.current !== sequence) return
+          const unavailable = loadError !== null && typeof loadError === 'object' && loadError.status === 404 && (loadError.code === undefined || loadError.code === null)
+          setError(unavailable ? t('unsupported') : t('loadFailed', { error: hostErrorText(loadError, t) }))
         } finally {
-          setLoading(false)
+          if (loadSeq.current === sequence) setLoading(false)
         }
       }, [sessionId, t])
+
+      React.useEffect(() => {
+        setState(null)
+        setPreview(null)
+        setConfirmRemove('')
+        setError('')
+        setNotice(null)
+      }, [sessionId])
 
       React.useEffect(() => {
         if (sessionId !== undefined && sessionId !== null) void load()
       }, [sessionId, load])
 
       React.useEffect(() => {
-        if (!open) return undefined
+        if (!open) {
+          setConfirmRemove('')
+          return undefined
+        }
         void load()
         const previousOverflow = document.body.style.overflow
         document.body.style.overflow = 'hidden'
@@ -816,7 +950,9 @@ window.__ModuleLoader__.load({
         const node = dialogRef.current
         const focusable = node === null ? [] : Array.from(node.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], select, textarea, [tabindex]:not([tabindex="-1"])'))
           .filter((element) => element.offsetParent !== null)
-        if (focusable.length > 0) focusable[0].focus()
+        const pathInput = node === null ? null : node.querySelector('input.dsh-xw-input')
+        if (pathInput !== null) pathInput.focus()
+        else if (focusable.length > 0) focusable[0].focus()
         const onKeyDown = (event) => {
           if (event.key === 'Escape') {
             event.preventDefault()
@@ -829,7 +965,10 @@ window.__ModuleLoader__.load({
           if (current.length === 0) return
           const first = current[0]
           const last = current[current.length - 1]
-          if (event.shiftKey && document.activeElement === first) {
+          if (!node.contains(document.activeElement)) {
+            event.preventDefault()
+            ;(event.shiftKey ? last : first).focus()
+          } else if (event.shiftKey && document.activeElement === first) {
             event.preventDefault()
             last.focus()
           } else if (!event.shiftKey && document.activeElement === last) {
@@ -848,23 +987,34 @@ window.__ModuleLoader__.load({
         const trimmed = value.trim()
         if (trimmed === '') {
           setPreview(null)
+          setPreviewBusy(false)
           return
         }
+        const sequence = ++previewSeq.current
         setPreviewBusy(true)
         try {
           const result = await request('/resolve', { method: 'POST', body: { sessionId, input: trimmed } })
-          setPreview({ ok: true, ...result })
+          if (previewSeq.current !== sequence) return
+          setPreview({ ok: true, input: trimmed, ...result })
         } catch (previewError) {
-          setPreview({ ok: false, error: errorText(previewError) })
+          if (previewSeq.current !== sequence) return
+          setPreview({ ok: false, input: trimmed, error: hostErrorText(previewError, t) })
         } finally {
-          setPreviewBusy(false)
+          if (previewSeq.current === sequence) setPreviewBusy(false)
         }
-      }, [sessionId])
+      }, [sessionId, t])
 
       React.useEffect(() => {
-        if (!open) return undefined
+        if (!open) {
+          previewSeq.current += 1
+          setPreviewBusy(false)
+          setPreview(null)
+          return undefined
+        }
         const value = input.trim()
         if (value === '') {
+          previewSeq.current += 1
+          setPreviewBusy(false)
           setPreview(null)
           return undefined
         }
@@ -885,6 +1035,9 @@ window.__ModuleLoader__.load({
       const add = React.useCallback(async () => {
         const value = input.trim()
         if (value === '') return
+        if (preview !== null && (preview.ok === false || preview.duplicate !== null)) return
+        loadSeq.current += 1
+        setLoading(false)
         setBusy('add')
         setError('')
         setNotice(null)
@@ -892,16 +1045,18 @@ window.__ModuleLoader__.load({
         try {
           const next = await request('/add', { method: 'POST', body: { sessionId, input: value, label } })
           const addedRoot = next?.roots?.find((root) => !previousIds.has(root.id))
+          previewSeq.current += 1
           setInput('')
           setLabel('')
           setPreview(null)
+          setPreviewBusy(false)
           applyResult(next, 'addSuccess', addedRoot?.path ?? value, addedRoot)
         } catch (addError) {
-          setError(t('saveFailed', { error: errorText(addError) }))
+          setError(t('saveFailed', { error: hostErrorText(addError, t) }))
         } finally {
           setBusy('')
         }
-      }, [applyResult, input, label, sessionId, state, t])
+      }, [applyResult, input, label, preview, sessionId, state, t])
 
       const browse = React.useCallback(async () => {
         const uiWorkspace = runtime.ctx.get('uiWorkspace')
@@ -914,30 +1069,43 @@ window.__ModuleLoader__.load({
         try {
           const picked = await uiWorkspace.pickDirectory()
           if (typeof picked === 'string' && picked !== '') {
+            previewSeq.current += 1
             setInput(picked)
             setPreview(null)
+            setPreviewBusy(false)
           }
         } catch (browseError) {
-          setError(errorText(browseError))
+          setError(hostErrorText(browseError, t))
         } finally {
           setBusy('')
         }
       }, [t])
 
       const onToggle = React.useCallback(async (root) => {
+        loadSeq.current += 1
+        setLoading(false)
         setBusy(root.id)
         setError('')
         try {
           const next = await request('/set-enabled', { method: 'POST', body: { sessionId, id: root.id, enabled: !root.enabled } })
-          applyResult(next, 'toggleSuccess', root.path)
+          const updated = next?.roots?.find((item) => item.id === root.id)
+          if (!root.enabled && updated !== undefined && updated.status.state === 'partial') {
+            setState(next)
+            setError('')
+            setNotice({ kind: 'warn', text: t('addPartial', { path: root.path }) })
+          } else {
+            applyResult(next, root.enabled ? 'disabledSuccess' : 'enabledSuccess', root.path)
+          }
         } catch (toggleError) {
-          setError(t('saveFailed', { error: errorText(toggleError) }))
+          setError(t('saveFailed', { error: hostErrorText(toggleError, t) }))
         } finally {
           setBusy('')
         }
       }, [applyResult, sessionId, t])
 
       const onRemove = React.useCallback(async (root) => {
+        loadSeq.current += 1
+        setLoading(false)
         setBusy(root.id)
         setError('')
         try {
@@ -945,13 +1113,15 @@ window.__ModuleLoader__.load({
           setConfirmRemove('')
           applyResult(next, 'removeSuccess', root.path)
         } catch (removeError) {
-          setError(t('saveFailed', { error: errorText(removeError) }))
+          setError(t('saveFailed', { error: hostErrorText(removeError, t) }))
         } finally {
           setBusy('')
         }
       }, [applyResult, sessionId, t])
 
       const onRetry = React.useCallback(async (root) => {
+        loadSeq.current += 1
+        setLoading(false)
         setBusy(root.id)
         setError('')
         try {
@@ -959,12 +1129,12 @@ window.__ModuleLoader__.load({
           const applied = next?.roots?.find((item) => item.id === root.id)
           if (applied !== undefined && applied.status.error) {
             setState(next)
-            setNotice({ kind: 'warn', text: t('retryFailed', { error: applied.status.error }) })
+            setNotice({ kind: 'warn', text: t('retryFailed', { error: statusErrorText(applied.status, t) }) })
           } else {
             applyResult(next, 'retrySuccess', root.path)
           }
         } catch (retryError) {
-          setError(t('saveFailed', { error: errorText(retryError) }))
+          setError(t('saveFailed', { error: hostErrorText(retryError, t) }))
         } finally {
           setBusy('')
         }
@@ -973,6 +1143,7 @@ window.__ModuleLoader__.load({
       if (sessionId === undefined || sessionId === null) return null
 
       const count = state?.roots?.filter((root) => root.enabled).length ?? 0
+      const previewBlocked = preview !== null && (preview.ok === false || preview.duplicate !== null)
       const modeLabel = state === null
         ? ''
         : state.mode === 'read-only' ? t('modeReadOnly')
@@ -983,7 +1154,7 @@ window.__ModuleLoader__.load({
         type: 'button',
         className: 'dsh-xw-button',
         title: t('buttonTitle'),
-        'aria-label': t('buttonLabel'),
+        'aria-label': count > 0 ? t('buttonLabelCount', { count }) : t('buttonLabel'),
         'aria-haspopup': 'dialog',
         'aria-expanded': open,
         onClick: () => {
@@ -1048,8 +1219,18 @@ window.__ModuleLoader__.load({
               onClick: () => { void load() },
               disabled: loading || busy !== '',
             }, h(IconRefresh, null), t('refresh'))),
-          loading && state === null
-            ? h('div', { className: 'dsh-xw-loading' }, t('previewChecking'))
+          state === null
+            ? h('div', { className: 'dsh-xw-empty' },
+              error !== '' ? t('loadFailedShort') : t('loading'),
+              error !== ''
+                ? h('button', {
+                  type: 'button',
+                  className: 'dsh-xw-btn',
+                  style: { marginLeft: '8px' },
+                  onClick: () => { void load() },
+                  disabled: loading,
+                }, h(IconRefresh, null), t('refresh'))
+                : null)
             : (state?.roots?.length ?? 0) === 0
               ? h('div', { className: 'dsh-xw-empty' }, t('empty'))
               : h('div', { className: 'dsh-xw-rows' },
@@ -1057,6 +1238,7 @@ window.__ModuleLoader__.load({
                   key: root.id,
                   root,
                   t,
+                  mode: state.mode,
                   busy,
                   confirmRemove,
                   setConfirmRemove,
@@ -1077,8 +1259,14 @@ window.__ModuleLoader__.load({
                   value: input,
                   placeholder: t('pathPlaceholder'),
                   spellCheck: false,
+                  disabled: state === null || busy !== '',
                   autoComplete: 'off',
-                  onChange: (event) => { setInput(event.target.value); setPreview(null) },
+                  onChange: (event) => {
+                    previewSeq.current += 1
+                    setPreviewBusy(false)
+                    setInput(event.target.value)
+                    setPreview(null)
+                  },
                   onKeyDown: (event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault()
@@ -1090,7 +1278,7 @@ window.__ModuleLoader__.load({
                   type: 'button',
                   className: 'dsh-xw-btn',
                   onClick: () => { void browse() },
-                  disabled: busy !== '',
+                  disabled: state === null || busy !== '',
                 }, t('browse')))),
             h('label', { className: 'dsh-xw-field' },
               h('span', { className: 'dsh-xw-field-label' }, t('labelLabel')),
@@ -1099,6 +1287,7 @@ window.__ModuleLoader__.load({
                 value: label,
                 placeholder: t('labelPlaceholder'),
                 maxLength: 200,
+                disabled: state === null || busy !== '',
                 onChange: (event) => setLabel(event.target.value),
               })),
             h('div', { className: 'dsh-xw-form-actions' },
@@ -1106,7 +1295,7 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: 'dsh-xw-btn dsh-xw-btn-primary',
                 onClick: () => { void add() },
-                disabled: busy !== '' || input.trim() === '',
+                disabled: state === null || busy !== '' || input.trim() === '' || previewBlocked,
               }, busy === 'add' ? t('adding') : h(IconPlus, null), busy === 'add' ? null : t('add')),
               h('span', { className: 'dsh-xw-hint' }, t('pathHint')))),
           previewBusy

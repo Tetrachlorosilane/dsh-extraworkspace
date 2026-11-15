@@ -113,16 +113,10 @@ function expandEnvironment(input) {
  * @returns {string} unquoted text.
  */
 function stripOuterQuotes(input) {
-  let result = input.trim()
+  const result = input.trim()
   const first = result[0]
   if ((first === '"' || first === "'" || first === '`') && result.length >= 2 && result.endsWith(first)) {
-    result = result.slice(1, -1).trim()
-  }
-  if ((result.startsWith('"') && !result.includes('"', 1)) || (result.startsWith("'") && !result.includes("'", 1))) {
-    result = result.slice(1).trim()
-  }
-  if ((result.endsWith('"') && !result.includes('"', 0)) || (result.endsWith("'") && !result.includes("'", 0))) {
-    result = result.slice(0, -1).trim()
+    return result.slice(1, -1).trim()
   }
   return result
 }

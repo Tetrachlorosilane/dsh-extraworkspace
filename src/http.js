@@ -20,6 +20,24 @@ import {
 const PREFIX = '/dsh-extraworkspace'
 const MAX_BODY_BYTES = 128 * 1024
 
+/**
+ * Whether a socket peer is the local machine. The panel edits real Windows
+ * ACLs, so the route accepts only loopback peers even though DSH's Web carrier
+ * may be configured to listen on a LAN address. This keeps an unauthenticated
+ * bootstrap token from making the route remotely usable; remote DSH Web
+ * deployments keep their normal authentication for the agent, but cannot drive
+ * this local-permission panel.
+ * @param {string | undefined} address - `req.socket.remoteAddress`.
+ * @returns {boolean} loopback verdict.
+ */
+function isLoopbackPeer(address) {
+  if (address === undefined || address === '') return false
+  if (address === '::1') return true
+  if (address.startsWith('127.')) return true
+  if (address.startsWith('::ffff:127.')) return true
+  return false
+}
+
 /** One HTTP-facing failure with an explicit status. */
 class HttpError extends Error {
   constructor(status, code, message) {
@@ -120,6 +138,9 @@ export function createHttpController({ ctx, manager, token, version }) {
    */
   async function handle(req, res) {
     try {
+      if (!isLoopbackPeer(req.socket.remoteAddress)) {
+        throw new HttpError(403, 'LOCAL_ONLY', 'The extra-workspaces panel is available only to local connections.')
+      }
       const url = new URL(req.url ?? '/', 'http://127.0.0.1')
       if (!url.pathname.startsWith(PREFIX)) throw new HttpError(404, 'NOT_FOUND', 'Unknown route.')
       const route = url.pathname.slice(PREFIX.length) || '/'
