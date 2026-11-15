@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { canonicalPath } from '@deepseek-ai/dsh-sandbox'
 import { AclGrantManager, grantCurrentUserFullControl } from './acl.js'
+import { inspectGit } from './forge/git.js'
 import { messageOf, resolveWorkspaceInput, WorkspacePathError } from './paths.js'
 
 /** A session id that no live Session owns. */
@@ -101,6 +102,8 @@ function normalizeRecord(sessionId, record) {
  * @property {object} session - live DSH Session.
  * @property {{ sessionId: string, roots: Array<object> }} record - durable projection.
  * @property {Map<string, object>} applied - root id → applied grant record.
+ * @property {Map<string, object>} gitStatus - root id → last read-only Git inspection.
+ * @property {number} gitCheckedAt - epoch milliseconds of the last Git refresh, or 0.
  * @property {Promise<unknown>} chain - serialized operation tail.
  */
 
@@ -148,6 +151,8 @@ export class ExtraWorkspaceManager {
       session,
       record: { sessionId: session.id, roots: [] },
       applied: new Map(),
+      gitStatus: new Map(),
+      gitCheckedAt: 0,
       chain: Promise.resolve(),
     }
     this.states.set(session.id, state)
@@ -344,6 +349,7 @@ export class ExtraWorkspaceManager {
       const next = { ...state.record, roots: [...state.record.roots, applied.record] }
       state.record = next
       state.applied.set(applied.record.id, applied)
+      state.gitStatus.delete(applied.record.id)
       try {
         await this.store.put(next)
       } catch (error) {
@@ -373,6 +379,7 @@ export class ExtraWorkspaceManager {
         await this.#disposeApplied(applied)
         state.applied.delete(id)
       }
+      state.gitStatus.delete(id)
       const next = { ...state.record, roots: state.record.roots.filter((root) => root.id !== id) }
       state.record = next
       await this.store.put(next)
@@ -402,6 +409,7 @@ export class ExtraWorkspaceManager {
           await this.#disposeApplied(previousApplied)
           state.applied.delete(id)
         }
+        state.gitStatus.delete(id)
         const next = { ...state.record, roots: state.record.roots.map((root) => root.id === id ? { ...root, enabled: false } : root) }
         state.record = next
         await this.store.put(next)
@@ -415,6 +423,7 @@ export class ExtraWorkspaceManager {
         throw new WorkspacePathError('APPLY_FAILED', applied.status.error || 'The sandbox grant could not be applied.')
       }
       state.applied.set(id, applied)
+      state.gitStatus.delete(id)
       const next = { ...state.record, roots: state.record.roots.map((root) => root.id === id ? applied.record : root) }
       state.record = next
       await this.store.put(next)
@@ -446,6 +455,7 @@ export class ExtraWorkspaceManager {
       }
       const applied = await this.#applyRoot(state, current)
       state.applied.set(id, applied)
+      state.gitStatus.delete(id)
       if (applied.status.fileTools === 'active') {
         const next = { ...state.record, roots: state.record.roots.map((root) => root.id === id ? applied.record : root) }
         state.record = next
@@ -491,6 +501,7 @@ export class ExtraWorkspaceManager {
       }
       const applied = await this.#applyRoot(state, { ...current, path: parsed.canonicalPath })
       state.applied.set(id, applied)
+      state.gitStatus.delete(id)
       if (applied.status.fileTools === 'active') {
         const next = { ...state.record, roots: state.record.roots.map((root) => root.id === id ? applied.record : root) }
         state.record = next
@@ -515,6 +526,34 @@ export class ExtraWorkspaceManager {
     })
     const duplicate = state.record.roots.find((root) => root.path.toLowerCase() === parsed.canonicalPath.toLowerCase())
     return { ...parsed, duplicate: duplicate === undefined ? null : { id: duplicate.id, label: duplicate.label } }
+  }
+
+  /**
+   * Re-inspect the Git state of every enabled extra workspace. This is a
+   * read-only Host operation; it is only offered when the forge companion is
+   * mounted, because the companion tab is the only consumer.
+   * @param {string} sessionId - live session identity.
+   * @returns {Promise<object>} the updated public state.
+   */
+  async refreshGit(sessionId) {
+    const session = this.requireSession(sessionId)
+    const state = await this.attach(session)
+    if (this.ctx.get('forgePanel') === undefined) return this.publicState(sessionId)
+    return this.#enqueue(state, async () => {
+      for (const record of state.record.roots) {
+        if (!record.enabled) {
+          state.gitStatus.delete(record.id)
+          continue
+        }
+        try {
+          state.gitStatus.set(record.id, await inspectGit(record.path))
+        } catch (error) {
+          state.gitStatus.set(record.id, { kind: 'directory', error: messageOf(error) })
+        }
+      }
+      state.gitCheckedAt = Date.now()
+      return this.publicState(sessionId)
+    })
   }
 
   /**
@@ -543,6 +582,8 @@ export class ExtraWorkspaceManager {
         enabled: record.enabled,
         addedAt: record.addedAt,
         exists,
+        kind: state.gitStatus.get(record.id)?.kind ?? 'directory',
+        git: state.gitStatus.get(record.id) ?? null,
         status: {
           state: exists ? status.state : (record.enabled ? 'missing' : 'disabled'),
           fileTools: exists ? status.fileTools : 'inactive',
@@ -563,6 +604,8 @@ export class ExtraWorkspaceManager {
       cwd: this.sessionCwd(session),
       roots,
       enabledCount: roots.filter((root) => root.enabled).length,
+      forge: this.ctx.get('forgePanel') !== undefined,
+      gitCheckedAt: state.gitCheckedAt > 0 ? state.gitCheckedAt : null,
     }
   }
 

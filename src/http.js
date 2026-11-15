@@ -152,6 +152,7 @@ export function createHttpController({ ctx, manager, token, version }) {
           version,
           platform: process.platform,
           supported: process.platform === 'win32',
+          forge: ctx.get('forgePanel') !== undefined,
         })
         return
       }
@@ -162,7 +163,11 @@ export function createHttpController({ ctx, manager, token, version }) {
         const sessionId = url.searchParams.get('sessionId')
         if (sessionId === null || sessionId === '') throw new HttpError(400, 'INVALID_ARGUMENT', 'sessionId is required.')
         await manager.attachById(sessionId)
-        sendJson(res, 200, manager.publicState(sessionId))
+        if (url.searchParams.get('refresh') === '1') {
+          sendJson(res, 200, await manager.refreshGit(sessionId))
+        } else {
+          sendJson(res, 200, manager.publicState(sessionId))
+        }
         return
       }
 

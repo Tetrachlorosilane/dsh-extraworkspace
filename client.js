@@ -107,6 +107,25 @@ window.__ModuleLoader__.load({
       loadFailedShort: 'Configuration unavailable.',
       unknownError: 'Unknown error',
       pathCopied: 'Path copied.',
+      forgeTabTitle: 'Extra workspaces',
+      forgeTabGuide: 'Status of the extra Git repositories and worktrees this session may write to.',
+      forgeTabIntro: 'The same right-sidebar page as Forge. Forge keeps the root workspace; this tab manages extra workspaces.',
+      forgeTabRoot: 'Root workspace',
+      forgeTabRootNote: 'PR review and root worktrees are managed by Forge.',
+      forgeTabEmpty: 'No extra workspaces. Add one from the session header panel.',
+      forgeTabRefresh: 'Refresh status',
+      forgeTabLoading: 'Inspecting Git state…',
+      forgeTabFailed: 'Could not read extra workspace state: {error}',
+      forgeTabNoGit: 'Not a Git repository',
+      forgeTabBranch: 'branch {branch}',
+      forgeTabDetached: 'detached {head}',
+      forgeTabClean: 'clean',
+      forgeTabDirty: '{count} changed',
+      forgeTabAhead: '{ahead} ahead',
+      forgeTabBehind: '{behind} behind',
+      forgeTabWorktrees: '{count} worktrees',
+      forgeTabForgeOff: 'Forge is not active; this tab is unavailable.',
+      forgeTabChecked: 'Checked {time}',
     }
 
     const ZH = {
@@ -201,6 +220,25 @@ window.__ModuleLoader__.load({
       loadFailedShort: '配置不可用。',
       unknownError: '未知错误',
       pathCopied: '路径已复制。',
+      forgeTabTitle: '额外工作区',
+      forgeTabGuide: '查看此会话可写入的额外 Git 仓库与工作树状态。',
+      forgeTabIntro: '与 Forge 共用一个右侧栏页面。Forge 管理根工作区；此标签管理额外工作区。',
+      forgeTabRoot: '根工作区',
+      forgeTabRootNote: 'PR 审阅与根工作树由 Forge 管理。',
+      forgeTabEmpty: '尚无额外工作区。请在会话头部面板中添加。',
+      forgeTabRefresh: '刷新状态',
+      forgeTabLoading: '正在检查 Git 状态…',
+      forgeTabFailed: '读取额外工作区状态失败：{error}',
+      forgeTabNoGit: '不是 Git 仓库',
+      forgeTabBranch: '分支 {branch}',
+      forgeTabDetached: '分离 {head}',
+      forgeTabClean: '干净',
+      forgeTabDirty: '{count} 个变更',
+      forgeTabAhead: '领先 {ahead}',
+      forgeTabBehind: '落后 {behind}',
+      forgeTabWorktrees: '{count} 个工作树',
+      forgeTabForgeOff: 'Forge 未启用，此标签不可用。',
+      forgeTabChecked: '检查于 {time}',
     }
 
     const CSS = String.raw`
@@ -651,6 +689,80 @@ window.__ModuleLoader__.load({
     align-self: flex-end;
   }
 }
+.dsh-xw-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  overflow: auto;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.dsh-xw-tab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dsh-xw-tab-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+.dsh-xw-tab-intro {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.dsh-xw-tab-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+.dsh-xw-tab-path {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsh-xw-tab-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+}
+.dsh-xw-tab-worktrees {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+}
+.dsh-xw-tab-worktrees li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsh-xw-tab-note {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+}
 `
 
     function errorText(error) {
@@ -706,11 +818,13 @@ window.__ModuleLoader__.load({
     let runtime = null
     let token = ''
     let tokenPromise = null
+    let bootstrapInfo = null
 
     async function ensureToken(force = false) {
       if (force) {
         token = ''
         tokenPromise = null
+        bootstrapInfo = null
       }
       if (token !== '') return token
       tokenPromise ??= fetch(`${BASE}/bootstrap`, { credentials: 'same-origin' })
@@ -719,6 +833,7 @@ window.__ModuleLoader__.load({
           const payload = await response.json()
           if (typeof payload.token !== 'string' || payload.token === '') throw new Error('The bootstrap response carried no token.')
           token = payload.token
+          bootstrapInfo = payload
           return token
         })
         .catch((error) => {
@@ -925,6 +1040,83 @@ window.__ModuleLoader__.load({
               disabled: busy !== '',
               onClick: () => setConfirmRemove(root.id),
             }, h(IconTrash, null))))
+    }
+
+    function GitFacts({ root, t }) {
+      const git = root.git
+      if (git === null || git === undefined || git.kind === 'directory') {
+        return h('span', null, t('forgeTabNoGit'))
+      }
+      const parts = []
+      if (git.branch) parts.push(t('forgeTabBranch', { branch: git.branch }))
+      else if (git.head) parts.push(t('forgeTabDetached', { head: git.head }))
+      if (git.dirty === 0) parts.push(t('forgeTabClean'))
+      else if (typeof git.dirty === 'number') parts.push(t('forgeTabDirty', { count: git.dirty }))
+      if (git.ahead !== null && git.ahead !== undefined && git.ahead > 0) parts.push(t('forgeTabAhead', { ahead: git.ahead }))
+      if (git.behind !== null && git.behind !== undefined && git.behind > 0) parts.push(t('forgeTabBehind', { behind: git.behind }))
+      if (Array.isArray(git.worktrees) && git.worktrees.length > 0) parts.push(t('forgeTabWorktrees', { count: git.worktrees.length }))
+      return h('span', null, parts.join(' · '))
+    }
+
+    function ExtraTab(props) {
+      const t = runtime.t
+      const sessionId = props?.sessionId
+      const [state, setState] = React.useState(null)
+      const [loading, setLoading] = React.useState(false)
+      const [error, setError] = React.useState('')
+      const load = React.useCallback(async (refresh) => {
+        if (sessionId === undefined || sessionId === null) return
+        setLoading(true)
+        setError('')
+        try {
+          const next = await request('/state', { query: { sessionId, refresh: refresh ? 1 : undefined } })
+          setState(next)
+        } catch (loadError) {
+          setError(hostErrorText(loadError, t))
+        } finally {
+          setLoading(false)
+        }
+      }, [sessionId, t])
+      React.useEffect(() => {
+        void load(true)
+      }, [load])
+      if (sessionId === undefined || sessionId === null) {
+        return h('div', { className: 'dsh-xw-tab' }, h('div', { className: 'dsh-xw-empty' }, t('sessionMissing')))
+      }
+      const roots = state?.roots ?? []
+      return h('div', { className: 'dsh-xw-tab' },
+        h('div', { className: 'dsh-xw-tab-head' },
+          h('h2', { className: 'dsh-xw-tab-title' }, t('forgeTabTitle')),
+          h('button', {
+            type: 'button',
+            className: 'dsh-xw-btn',
+            disabled: loading,
+            onClick: () => { void load(true) },
+          }, h(IconRefresh, null), t('forgeTabRefresh'))),
+        h('p', { className: 'dsh-xw-tab-intro' }, t('forgeTabIntro')),
+        state === null
+          ? h('div', { className: 'dsh-xw-loading' }, loading ? t('forgeTabLoading') : t('loadFailedShort'))
+          : h(React.Fragment, null,
+            h('div', { className: 'dsh-xw-tab-card' },
+              h('div', { className: 'dsh-xw-tab-meta' },
+                h('strong', null, t('forgeTabRoot')),
+                h(Badge, { tone: 'muted' }, state.mode)),
+              h('div', { className: 'dsh-xw-tab-path', title: state.workspaceRoot }, state.workspaceRoot),
+              h('div', { className: 'dsh-xw-tab-note' }, t('forgeTabRootNote'))),
+            roots.length === 0
+              ? h('div', { className: 'dsh-xw-empty' }, t('forgeTabEmpty'))
+              : roots.map((root) => h('div', { key: root.id, className: 'dsh-xw-tab-card' },
+                h('div', { className: 'dsh-xw-tab-meta' },
+                  h(Badge, { tone: root.enabled ? 'ok' : 'muted' }, root.kind === 'git-worktree' ? 'worktree' : root.kind === 'git-repo' ? 'git' : 'dir'),
+                  h('span', null, root.label || basename(root.path))),
+                h('div', { className: 'dsh-xw-tab-path', title: root.path }, root.path),
+                h('div', { className: 'dsh-xw-tab-meta' }, h(GitFacts, { root, t })),
+                root.git?.error ? h('div', { className: 'dsh-xw-error' }, root.git.error) : null,
+                Array.isArray(root.git?.worktrees) && root.git.worktrees.length > 0
+                  ? h('ul', { className: 'dsh-xw-tab-worktrees' }, ...root.git.worktrees.map((worktree) => h('li', { key: worktree.path, title: worktree.path }, (worktree.branch || worktree.head || '') + '  ' + worktree.path)))
+                  : null)),
+            state.gitCheckedAt ? h('div', { className: 'dsh-xw-tab-note' }, t('forgeTabChecked', { time: new Date(state.gitCheckedAt).toLocaleTimeString() })) : null),
+        error !== '' ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'error', role: 'alert' }, t('forgeTabFailed', { error })) : null)
     }
 
     function Panel(props) {
@@ -1406,9 +1598,41 @@ window.__ModuleLoader__.load({
       return h(React.Fragment, null, button, modal)
     }
 
+    async function installForgeTab(ctx) {
+      try {
+        await ensureToken()
+        if (bootstrapInfo?.forge !== true) return
+        const tabs = ctx.get('sidebarRightTabs')
+        if (tabs === undefined) {
+          console.warn('dsh-extraworkspace: forge is active but sidebarRightTabs is unavailable; the Extra workspaces tab was not registered.')
+          return
+        }
+        const id = '@dsh-external/dsh-extraworkspace/extra'
+        const kind = 'dsh-extraworkspace'
+        ctx.effect(() => tabs.register({
+          id,
+          kind,
+          title: () => runtime.t('forgeTabTitle'),
+          guide: [{
+            id: 'extra-workspaces',
+            order: 20,
+            title: () => runtime.t('forgeTabTitle'),
+            description: () => runtime.t('forgeTabGuide'),
+          }],
+        }), 'dsh-extraworkspace forge tab')
+        ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+          name: 'sidebar.right.pane.tab',
+          key: id,
+          locale: NS,
+        }, ExtraTab))
+      } catch (error) {
+        console.warn('dsh-extraworkspace: could not register the Extra workspaces tab:', error)
+      }
+    }
+
     return {
       inject: ['slots', 'locale'],
-      apply(ctx) {
+      async apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, { en: EN, zh: ZH }), 'dsh-extraworkspace locale')
         ctx.effect(() => {
           const element = document.createElement('style')
@@ -1424,6 +1648,7 @@ window.__ModuleLoader__.load({
           order: 12,
           label: () => runtime.t('buttonLabel'),
         }, Panel))
+        await installForgeTab(ctx)
       },
     }
   },

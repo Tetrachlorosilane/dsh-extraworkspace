@@ -65,10 +65,12 @@ src/acl.js               Ref-counted Windows ACL grants; native icacls deny clea
 src/store.js             storage-domain declaration + memory fallback
 src/manager.js           Per-session orchestration, serialized mutations, public panel state
 src/http.js              Host JSON route, token, body limit, error mapping
+src/forge/git.js         Read-only Git inspection for the optional Forge companion
 client.js                Plain Module Loader factory: header button + modal editor
 locale/{en,zh}.json      Plugin Manager display metadata
 docs/DETAIL.md           Plugin Manager detail page
 tests/paths.test.mjs     Node test runner coverage for path parsing/safety
+tests/git.test.mjs       Read-only Git inspector coverage (scratch repositories)
 tests/acl-selftest.mjs   Manual AclSandbox probe for the process grant
 ```
 
@@ -215,10 +217,10 @@ turns an accidental-write fence into a broad one. Add a test in
 
 - Prefix: `/dsh-extraworkspace`; all responses `application/json`,
   `cache-control: no-store`.
-- `GET /bootstrap` returns `{ token, version, platform, supported }` without
-  auth. The page then sends `x-dsh-extraworkspace-token` on every request.
+- `GET /bootstrap` returns `{ token, version, platform, supported, forge }`
+  without auth; `forge` reports whether `ctx.get('forgePanel')` is mounted. The page then sends `x-dsh-extraworkspace-token` on every request.
 - Body limit 128 KiB; invalid JSON is 400.
-- Routes: `GET /state?sessionId`, `POST /resolve`, `POST /add`,
+- Routes: `GET /state?sessionId[&refresh=1]`, `POST /resolve`, `POST /add`,
   `POST /remove`, `POST /set-enabled`, `POST /retry`,
   `POST /repair-permissions`.
 - Errors map from `WorkspacePathError`, `WorkspaceConflictError`,
@@ -238,6 +240,12 @@ turns an accidental-write fence into a broad one. Add a test in
   equal the package name.
 - Registers one entry in `conversation.session.header.utilities`
   (`id: dsh-extraworkspace`, `order: 12`).
+- When `/bootstrap` reports `forge: true` and `ctx.get('sidebarRightTabs')`
+  exists, also registers an `Extra workspaces` tab in
+  `sidebar.right.pane.tab` and a guide entry. The tab shows read-only Git
+  state for extra roots; it is not registered when Forge is inactive.
+- `ExtraTab` calls `GET /state?refresh=1`, which runs `inspectGit()` on every
+  enabled root. This is read-only Host Git, not the sandboxed write path.
 - Uses only `react` and `react-dom` from the shared module table. No Harness
   Client package is imported.
 - Modal is rendered with `ReactDOM.createPortal` to `document.body`; the
@@ -258,7 +266,7 @@ turns an accidental-write fence into a broad one. Add a test in
 Before handing a change back:
 
 1. `node --check index.js client.js src/*.js`
-2. `node tests/paths.test.mjs` (all tests)
+2. `node --test tests/paths.test.mjs tests/git.test.mjs` (all tests)
 3. Validate `package.json` and locale JSON parse:
    `node -e "JSON.parse(require('fs').readFileSync('package.json')); ..."`
 4. Install the bundle with `plugin_manager` (local directory target).

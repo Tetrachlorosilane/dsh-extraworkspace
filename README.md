@@ -92,6 +92,28 @@ contains the session workspace is refused.
 - Existing processes keep the permissions resolved when they started. Start a
   new command to pick up a changed allow-list.
 
+## Forge companion (optional)
+
+When `@deepseek-ai/dsh-experimental-forge-bundle` is active, the browser
+half also registers an **Extra workspaces** tab in the same right-sidebar tab
+strip as the Forge panel. The tab is gated on the Host reporting
+`forge: true` from `/bootstrap`; when Forge is disabled it is not
+registered and the existing session-header panel remains the only UI.
+
+The companion tab currently shows:
+
+- the root workspace and a note that Forge owns its PR review and worktrees;
+- each extra workspace with its detected kind (directory, Git repository, or
+  linked worktree), branch/HEAD, dirty count, ahead/behind, and worktree list;
+- a manual **Refresh status** action. Git inspection is read-only
+  (`GIT_OPTIONAL_LOCKS=0`), runs on the Host, and does not need sandbox
+  write permission.
+
+The companion adds **no model-facing tools**. The model keeps the same
+`bash`/`write` surface and a stable list of approved extra roots; Forge keeps
+its `create_worktree` tool for the root workspace. Enabling or disabling Forge
+after the page loaded requires a page refresh for the tab to appear or leave.
+
 ## Limitations
 
 - Windows only. The host row is disabled on other platforms. A custom
@@ -138,7 +160,7 @@ contains the session workspace is refused.
 ```sh
 node --check index.js
 node --check client.js
-node tests/paths.test.mjs
+node --test tests/paths.test.mjs tests/git.test.mjs
 ```
 
 The package has no build step: the host half is plain ESM and the browser half
