@@ -33,7 +33,7 @@ accidental-write fence.
 
 ## 2. Runtime facts pinned by the current implementation
 
-Verified against DSH `0.2.2-rc.3` on Windows (Desktop profile):
+Verified against DSH `0.2.2-rc.5` on Windows (Desktop profile):
 
 | Fact | Value / contract |
 |---|---|
@@ -88,8 +88,9 @@ There is no build step. `package.json` has `"type": "module"`; `index.js`,
 `index.js` exports `inject = ['sessions', 'sandboxPolicy']`, so Cordis waits for
 those services. `apply(ctx)`:
 
-1. Returns early off Windows. The bundle patch also disables the row off
-   Windows; the early return is defense in depth.
+1. Returns early off Windows. The bundle declares the row unconditionally;
+   `apply()` is the platform gate, so a non-Windows Host loads the row but does
+   nothing.
 2. Opens the storage domain (falls back to memory and warns).
 3. Creates one `ExtraWorkspaceManager` and one process token.
 4. Registers a cleanup effect: `manager.disposeAll()` then `store.close()`.
@@ -139,8 +140,18 @@ file-tool capability.
   `Everyone` deny on the directory, including duplicates the grant merge can
   produce on a re-grant; the pre-existence check is what makes that safe. Do not
   remove the check or substitute a broad `icacls` call.
-- If the deny inspection fails, the manager treats the deny as pre-existing and
-  leaves it. Conservative residue is better than removing a user's security
+- **DSH `0.2.2-rc.5` keeps workspace grants standing.** Its `AclSandbox` writes
+  the workspace ACE with `grantWrite()` and never revokes it; `AclWriteGrant`
+  defaults to revocable paths, but workspace paths are explicitly standing.
+  This plugin's extra-root grant stays revocable (`add(path, false)`), so
+  removal still revokes its own capability ACE. Before removing the shared
+  ambient-delete deny, `#release`/`disposeAll` now also check for any remaining
+  `S-1-4-*` allow ACE and skip the deny removal when another capability grant
+  remains. That protects DSH's standing workspace grant when an extra directory
+  is also a workspace. Do not drop this guard; `icacls /remove:d` cannot
+  distinguish whose deny it removes.
+- If the deny or capability inspection fails, the manager keeps the deny and
+  label. Conservative residue is better than removing a user's security
   control.
 - ACL propagation is eager and can take seconds on large trees. The panel shows
   a busy state; do not add a short timeout around `grant.add()`.
@@ -373,3 +384,7 @@ Before handing a change back:
 - `0.1.2` — one right-sidebar UI: the Extra workspaces tab always hosts the
   core settings panel and the header button opens it; Forge only adds the Git
   section. Adds the real archive harness.
+- `0.1.3` — adapt to DSH `0.2.2-rc.5`: update the pinned sandbox/storage peers,
+  require Node 24.9, and preserve shared ambient-delete denies while another
+  capability grant (notably DSH's standing workspace grant) remains on a
+  directory.

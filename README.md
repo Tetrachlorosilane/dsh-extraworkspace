@@ -21,16 +21,16 @@ This plugin adds a small, explicit allow-list on top of that model:
    label to the directory with the same ACL backend DSH uses. New sandboxed
    `bash` / PowerShell processes therefore get the same write capability.
 
-The allow-list is **per session**. It is configured from a panel in the
-session header, persisted in the plugin's own storage domain, and restored when
-a session is resumed. It is not a global permission and it is not a security
-boundary against a hostile project: it is an ergonomic extension of the
-accidental-write sandbox.
+The allow-list is **per session**. It is configured from the **Extra workspaces**
+right-sidebar tab (the session-header folder button opens that tab), persisted in
+the plugin's own storage domain, and restored when a session is resumed. It is
+not a global permission and it is not a security boundary against a hostile
+project: it is an ergonomic extension of the accidental-write sandbox.
 
 ## Requirements
 
 - DeepSeek Harness Desktop (or Web host) on **Windows**.
-- DSH `0.2.2-rc.3` (the ACL backend and storage-domain APIs this plugin uses).
+- DSH `0.2.2-rc.5` (the ACL backend and storage-domain APIs this plugin uses).
 - The session must run under `workspace-write` for the extra grants to take
   effect. `read-only` still denies every write; `danger-full-access` needs no
   grants.

@@ -1,6 +1,8 @@
 # Host row for the per-session extra-workspaces plugin. The Windows ACL
-# extension is Windows-only; the row stays inert elsewhere.
+# extension is Windows-only; apply() returns early elsewhere, so the row can be
+# declared unconditionally without evaluating a process.platform expression in
+# the profile loader.
 - insert:
     - id: dsh-extraworkspace
       name: '@dsh-external/dsh-extraworkspace'
-      disabled: !!js "process.platform !== 'win32'"
+      disabled: false

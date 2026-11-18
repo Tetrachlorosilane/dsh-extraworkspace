@@ -1,9 +1,9 @@
 {
   "name": "@dsh-external/dsh-extraworkspace",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
-  "description": "Per-session extra workspaces for DeepSeek Harness on Windows: extend the file sandbox and the low-integrity process sandbox with configurable additional directories, edited from a visual session-header panel.",
+  "description": "Per-session extra workspaces for DeepSeek Harness on Windows: extend the file sandbox and the low-integrity process sandbox with configurable additional directories, edited from a right-sidebar tab opened by the session header.",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",
@@ -52,12 +52,13 @@
     }
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.5 <0.3.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-sandbox": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-sandbox-windows-acl": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-storage-domain": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-sandbox": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-sandbox-windows-acl": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-storage-domain": "0.2.2-rc.5",
     "zod": "4.6.6"
   }
 }

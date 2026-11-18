@@ -12,9 +12,11 @@
  *
  * The grant also adds DSH's ambient-delete deny and Low mandatory label. The
  * deny is removed on revoke only when the directory did not already carry an
- * identical deny; the label is cleared by `AclWriteGrant.dispose()` when no
- * foreign capability grant remains. This keeps a removed extra workspace from
- * silently retaining sandbox write authority.
+ * identical deny and no other capability-SID grant remains; the label is
+ * cleared by `AclWriteGrant.dispose()` when no foreign capability grant
+ * remains. DSH 0.2.2-rc.5 keeps workspace grants standing, so the second check
+ * protects a directory that is also a DSH workspace. Together these checks keep
+ * a removed extra workspace from silently retaining sandbox write authority.
  */
 
 import { spawnSync } from 'node:child_process'
@@ -109,6 +111,42 @@ if ($matches.Count -gt 0) { '1' } else { '0' }
 }
 
 /**
+ * Report whether the directory still carries any capability-SID allow ACE.
+ *
+ * DSH 0.2.2-rc.5 deliberately makes workspace grants standing: the
+ * per-workspace SID's ACE is the cross-session reuse cache and is never
+ * revoked. If this plugin's grant is removed from a directory that is also a
+ * DSH workspace (or carries another plugin's capability grant), the shared
+ * ambient-delete deny and Low label must stay. On any inspection failure this
+ * returns true, which is the conservative answer.
+ * @param {string} directory - absolute directory path.
+ * @returns {Promise<boolean>} true when another capability grant may remain.
+ */
+async function hasAnyCapabilityGrant(directory) {
+  const script = String.raw`
+$ErrorActionPreference = 'Stop'
+$target = $env:DshXwPath
+$acl = Get-Acl -LiteralPath $target
+foreach ($rule in $acl.Access) {
+  if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
+  try {
+    $sid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+  } catch {
+    continue
+  }
+  if ($sid -like 'S-1-4-*') { '1'; exit 0 }
+}
+'0'
+`
+  try {
+    const output = runPowerShell(script, { DshXwPath: directory })
+    return output === '1'
+  } catch {
+    return true
+  }
+}
+
+/**
  * Remove DSH's ambient-delete deny from the directory.
  *
  * `icacls /remove:d` is deliberate: the ACL produced by the grant merge is not
@@ -118,7 +156,9 @@ if ($matches.Count -gt 0) { '1' } else { '0' }
  * through the native APIs, handles the non-canonical shape, and needs only the
  * owner's `WRITE_DAC`. It removes every `Everyone` deny on the directory, which
  * is why the caller first verifies that no identical deny existed before the
- * plugin granted the directory.
+ * plugin granted the directory, and that no other capability grant remains.
+ * DSH 0.2.2-rc.5 keeps workspace grants standing, so that second check is
+ * required for coexistence.
  * @param {string} directory - absolute directory path.
  * @returns {Promise<void>} resolution after the DACL is written.
  */
@@ -260,7 +300,9 @@ export class AclGrantManager {
         this.pathStates.delete(entry.pathKey)
         if (!pathState.preexistingDeny) {
           try {
-            await removeEveryoneDeleteDeny(entry.path)
+            if (!(await hasAnyCapabilityGrant(entry.path))) {
+              await removeEveryoneDeleteDeny(entry.path)
+            }
           } catch (error) {
             failures.push(error)
           }
@@ -293,7 +335,9 @@ export class AclGrantManager {
     for (const pathState of this.pathStates.values()) {
       if (pathState.preexistingDeny) continue
       try {
-        await removeEveryoneDeleteDeny(pathState.path)
+        if (!(await hasAnyCapabilityGrant(pathState.path))) {
+          await removeEveryoneDeleteDeny(pathState.path)
+        }
       } catch (error) {
         failures.push(error)
       }
