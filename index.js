@@ -18,7 +18,7 @@ import { createHttpController } from './src/http.js'
 import { ExtraWorkspaceManager } from './src/manager.js'
 import { openWorkspaceStore } from './src/store.js'
 
-const HOST_VERSION = '0.1.3'
+const HOST_VERSION = '0.1.4'
 const ROUTE_PREFIX = '/dsh-extraworkspace'
 
 /** Cordis services this plugin cannot work without. */

@@ -56,6 +56,11 @@ header (right-side utilities).
 4. Toggle a directory off to keep the entry but revoke its grants.
 5. Remove it to revoke the grants and forget the entry.
 
+If you open an inactive subagent or another persisted-but-not-live Session, the
+panel still lists the saved entries but marks them **inactive** and read-only.
+Reopen that conversation (make its Agent live) before adding, removing, or
+toggling entries; mutations on a cold Session return `SESSION_NOT_LIVE`.
+
 Accepted path forms include:
 
 | Form | Example |

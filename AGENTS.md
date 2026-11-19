@@ -63,6 +63,7 @@ across unrelated DSH releases.
 index.js                 Host entry: lifecycle, agent events, route, prompt context
 src/paths.js             Path intake: drive/UNC/Cygwin/MSYS/WSL/URI/env/relative; safety checks
 src/acl.js               Ref-counted Windows ACL grants; native icacls deny cleanup
+src/cold.js              Pure read-only projection for persisted non-live Sessions
 src/store.js             storage-domain declaration + memory fallback
 src/manager.js           Per-session orchestration, serialized mutations, public panel state
 src/http.js              Host JSON route, token, body limit, error mapping
@@ -73,6 +74,7 @@ client.js                Plain Module Loader factory: header button + right-side
 locale/{en,zh}.json      Plugin Manager display metadata
 docs/DETAIL.md           Plugin Manager detail page
 tests/paths.test.mjs     Node test runner coverage for path parsing/safety
+tests/cold.test.mjs      Cold-session read-only projection coverage
 tests/git.test.mjs       Read-only Git inspector coverage (scratch repositories)
 tests/worktree.test.mjs  Worktree name/path safety coverage
 tests/archive-harness/   Temporary bundle that creates and archives a real Session
@@ -251,13 +253,20 @@ turns an accidental-write fence into a broad one. Add a test in
   `cache-control: no-store`.
 - `GET /bootstrap` returns `{ token, version, platform, supported, forge }`
   without auth; `forge` reports whether `ctx.get('forgePanel')` is mounted. The page then sends `x-dsh-extraworkspace-token` on every request.
+- `GET /state?sessionId[&refresh=1]` is live-preferred. A live Session attaches
+  and materializes grants; a persisted-but-cold Session is read through
+  `ctx.get('sessionQuery').readSession()` and returned with `live:false`,
+  `readOnly:true`, and every saved entry marked `inactive`. Do not return 404
+  for a cold Session that still exists in persistence.
+- Mutation routes (`/resolve`, `/add`, `/remove`, `/set-enabled`, `/retry`,
+  `/repair-permissions`, worktree routes, retain switch) require a live Session.
+  A cold Session returns **409 `SESSION_NOT_LIVE`**; no ACL or file grant is
+  attempted. `SESSION_QUERY_UNAVAILABLE`/`SESSION_READ_FAILED` are 503.
 - Body limit 128 KiB; invalid JSON is 400.
-- Routes: `GET /state?sessionId[&refresh=1]`, `POST /resolve`, `POST /add`,
-  `POST /remove`, `POST /set-enabled`, `POST /retry`,
-  `POST /repair-permissions`, `POST /add-worktree`, `POST /remove-worktree`,
-  `POST /set-retain-worktrees`.
 - Errors map from `WorkspacePathError`, `WorkspaceConflictError`,
-  `WorkspaceEntryNotFoundError`, `SessionNotFoundError`, and `HttpError`.
+  `WorkspaceEntryNotFoundError`, `SessionNotFoundError`,
+  `SessionNotLiveError`, `SessionQueryUnavailableError`,
+  `ColdSessionReadError`, and `HttpError`.
 - The token is per Host process. The Client retries once after a 401, which
   covers a Host restart. The bootstrap response is same-origin only; no CORS
   headers are set. The route accepts loopback peers only (`LOCAL_ONLY` otherwise),
@@ -281,8 +290,13 @@ turns an accidental-write fence into a broad one. Add a test in
   permissions). When `/bootstrap` reports `forge: true`, it additionally
   mounts the Forge companion section (Git status, worktrees, archive switch).
   The Git/worktree routes still reject requests when Forge is inactive.
-- `ExtraTab` calls `GET /state?refresh=1`, which runs `inspectGit()` on every
-  enabled root. This is read-only Host Git, not the sandboxed write path.
+- `ExtraTab` calls `GET /state?refresh=1`; for a live Session this runs
+  `inspectGit()` on every enabled root. This is read-only Host Git, not the
+  sandboxed write path. A cold Session returns `live:false`, `readOnly:true`,
+  and no Git refresh.
+- The tab and the embedded panel render a “reopen the Session” notice for a
+  cold Session and disable add/remove/toggle/retry/repair/worktree/retain
+  controls. Server-side mutation routes still enforce 409 `SESSION_NOT_LIVE`.
 - The tab creates/removes extra worktrees through the Host routes and never
   calls `ctx.worktrees` or `workingDirectory.set`; the Session cwd stays put.
 - `addWorktree`/`removeWorktree` and the archive switch reject requests when
@@ -388,3 +402,7 @@ Before handing a change back:
   require Node 24.9, and preserve shared ambient-delete denies while another
   capability grant (notably DSH's standing workspace grant) remains on a
   directory.
+- `0.1.4` — cold-session handling: `GET /state` reads a persisted non-live
+  Session through `sessionQuery` and returns a read-only projection; mutations
+  return 409 `SESSION_NOT_LIVE` instead of 404, and the panel disables its
+  controls with a “reopen the Session” notice.

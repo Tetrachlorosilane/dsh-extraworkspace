@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { canonicalPath } from '@deepseek-ai/dsh-sandbox'
 import { AclGrantManager, grantCurrentUserFullControl } from './acl.js'
+import { summarizeColdSession } from './cold.js'
 import { inspectGit } from './forge/git.js'
 import { createWorktree, removeWorktree } from './forge/worktree.js'
 import { messageOf, resolveWorkspaceInput, WorkspacePathError } from './paths.js'
@@ -23,6 +24,34 @@ export class SessionNotFoundError extends Error {
     super(`No live session has id ${JSON.stringify(sessionId)}.`)
     this.name = 'SessionNotFoundError'
     this.code = 'SESSION_NOT_FOUND'
+  }
+}
+
+/** A persisted Session exists but has no live Agent and cannot be mutated. */
+export class SessionNotLiveError extends Error {
+  constructor(sessionId) {
+    super(`Session ${JSON.stringify(sessionId)} is not live. Reopen it before changing extra workspaces.`)
+    this.name = 'SessionNotLiveError'
+    this.code = 'SESSION_NOT_LIVE'
+  }
+}
+
+/** Cold-session metadata is unavailable because `sessionQuery` is not mounted. */
+export class SessionQueryUnavailableError extends Error {
+  constructor() {
+    super('This profile has no sessionQuery service; saved extra workspaces can be shown only for live sessions.')
+    this.name = 'SessionQueryUnavailableError'
+    this.code = 'SESSION_QUERY_UNAVAILABLE'
+  }
+}
+
+/** A persisted Session could not be read for read-only display. */
+export class ColdSessionReadError extends Error {
+  constructor(sessionId, cause) {
+    super(`Could not read saved Session ${JSON.stringify(sessionId)}: ${messageOf(cause)}`)
+    this.name = 'ColdSessionReadError'
+    this.code = 'SESSION_READ_FAILED'
+    this.cause = cause
   }
 }
 
@@ -216,6 +245,30 @@ export class ExtraWorkspaceManager {
   }
 
   /**
+   * Resolve a live Session for a mutation. A persisted-but-cold Session is
+   * reported as `SESSION_NOT_LIVE` so the route can answer 409 without
+   * attempting a grant or attaching an Agent as a side effect.
+   * @param {string} sessionId - session identity from the panel.
+   * @returns {Promise<object>} live Session.
+   */
+  async requireWritableSession(sessionId) {
+    const session = this.ctx.sessions.get(sessionId)
+    if (session !== undefined) return session
+    const query = this.ctx.get('sessionQuery')
+    if (query === undefined) throw new SessionNotFoundError(sessionId)
+    try {
+      await query.readSession(sessionId)
+    } catch (error) {
+      if (error?.code === 'SESSION_QUERY_SESSION_NOT_FOUND') throw new SessionNotFoundError(sessionId)
+      throw new ColdSessionReadError(sessionId, error)
+    }
+    // A Session can become live while the cold read is in flight.
+    const nowLive = this.ctx.sessions.get(sessionId)
+    if (nowLive !== undefined) return nowLive
+    throw new SessionNotLiveError(sessionId)
+  }
+
+  /**
    * Load a session's durable record and materialize its grants. Idempotent;
    * concurrent callers share the same loading chain.
    * @param {object} session - live Session.
@@ -251,12 +304,64 @@ export class ExtraWorkspaceManager {
   }
 
   /**
-   * Attach by id, used by the Host event listeners.
+   * Attach by id, used by the Host event listeners and write operations.
+   * A persisted-but-cold Session is distinguished from an unknown id so the
+   * panel can say "reopen it" instead of returning a misleading not-found.
    * @param {string} sessionId - live session identity.
    * @returns {Promise<SessionState>} attached state.
    */
   async attachById(sessionId) {
-    return this.attach(this.requireSession(sessionId))
+    return this.attach(await this.requireWritableSession(sessionId))
+  }
+
+  /**
+   * Read the panel state for a live or persisted Session without activating a
+   * cold one. Live sessions keep their runtime grants; cold sessions are
+   * read-only and every saved entry is reported inactive.
+   * @param {string} sessionId - session identity.
+   * @param {boolean} [refresh] - refresh Git state for a live session.
+   * @returns {Promise<object>} serializable panel state.
+   */
+  async stateById(sessionId, refresh = false) {
+    const session = this.ctx.sessions.get(sessionId)
+    if (session !== undefined) {
+      await this.attach(session)
+      return refresh ? this.refreshGit(sessionId) : this.publicState(sessionId)
+    }
+    return this.coldState(sessionId)
+  }
+
+  /**
+   * Build the read-only state of a persisted Session with no live Agent.
+   * @param {string} sessionId - persisted session identity.
+   * @returns {Promise<object>} panel state with `live:false` and `readOnly:true`.
+   */
+  async coldState(sessionId) {
+    const query = this.ctx.get('sessionQuery')
+    if (query === undefined) throw new SessionQueryUnavailableError()
+    let snapshot
+    try {
+      snapshot = await query.readSession(sessionId)
+    } catch (error) {
+      if (error?.code === 'SESSION_QUERY_SESSION_NOT_FOUND') throw new SessionNotFoundError(sessionId)
+      throw new ColdSessionReadError(sessionId, error)
+    }
+    let record = { sessionId, roots: [] }
+    try {
+      record = normalizeRecord(sessionId, await this.store.get(sessionId))
+    } catch (error) {
+      this.ctx.logger?.warn?.(`dsh-extraworkspace: cannot read saved state for ${sessionId}: ${String(error)}`)
+    }
+    return summarizeColdSession({
+      sessionId,
+      header: snapshot.session,
+      events: snapshot.events ?? [],
+      record,
+      supported: process.platform === 'win32',
+      storage: this.store.persistent ? 'persistent' : 'memory',
+      forge: this.ctx.get('forgePanel') !== undefined,
+      retainWorktreesOnArchive: this.retainWorktreesOnArchive,
+    })
   }
 
   /**
@@ -422,7 +527,7 @@ export class ExtraWorkspaceManager {
    * @returns {Promise<object>} the updated public session state.
    */
   async add(sessionId, input, label) {
-    const session = this.requireSession(sessionId)
+    const session = await this.requireWritableSession(sessionId)
     const state = await this.attach(session)
     return this.#enqueue(state, async () => {
       const parsed = resolveWorkspaceInput(input, {
@@ -471,7 +576,7 @@ export class ExtraWorkspaceManager {
    * @returns {Promise<object>} the updated public session state.
    */
   async remove(sessionId, id) {
-    const session = this.requireSession(sessionId)
+    const session = await this.requireWritableSession(sessionId)
     const state = await this.attach(session)
     return this.#enqueue(state, async () => {
       const index = state.record.roots.findIndex((root) => root.id === id)
@@ -497,7 +602,7 @@ export class ExtraWorkspaceManager {
    * @returns {Promise<object>} the updated public session state.
    */
   async setEnabled(sessionId, id, enabled) {
-    const session = this.requireSession(sessionId)
+    const session = await this.requireWritableSession(sessionId)
     const state = await this.attach(session)
     return this.#enqueue(state, async () => {
       const index = state.record.roots.findIndex((root) => root.id === id)
@@ -541,7 +646,7 @@ export class ExtraWorkspaceManager {
    * @returns {Promise<object>} the updated public session state.
    */
   async retry(sessionId, id) {
-    const session = this.requireSession(sessionId)
+    const session = await this.requireWritableSession(sessionId)
     const state = await this.attach(session)
     return this.#enqueue(state, async () => {
       const index = state.record.roots.findIndex((root) => root.id === id)
@@ -578,7 +683,7 @@ export class ExtraWorkspaceManager {
    * @returns {Promise<object>} the updated public session state.
    */
   async repairPermissions(sessionId, id) {
-    const session = this.requireSession(sessionId)
+    const session = await this.requireWritableSession(sessionId)
     const state = await this.attach(session)
     return this.#enqueue(state, async () => {
       const index = state.record.roots.findIndex((root) => root.id === id)
@@ -620,7 +725,7 @@ export class ExtraWorkspaceManager {
    * @returns {Promise<object>} normalized address and duplicate flag.
    */
   async preview(sessionId, input) {
-    const session = this.requireSession(sessionId)
+    const session = await this.requireWritableSession(sessionId)
     const state = await this.attach(session)
     const parsed = resolveWorkspaceInput(input, {
       sessionCwd: this.sessionCwd(session),
@@ -704,7 +809,7 @@ export class ExtraWorkspaceManager {
    * @returns {Promise<object>} the updated public state.
    */
   async refreshGit(sessionId) {
-    const session = this.requireSession(sessionId)
+    const session = await this.requireWritableSession(sessionId)
     const state = await this.attach(session)
     if (this.ctx.get('forgePanel') === undefined) return this.publicState(sessionId)
     return this.#enqueue(state, async () => {
@@ -807,7 +912,7 @@ export class ExtraWorkspaceManager {
     if (this.ctx.get('forgePanel') === undefined) {
       throw new WorkspacePathError('FORGE_DISABLED', 'The forge bundle is not active; extra-worktree management is unavailable.')
     }
-    const session = this.requireSession(sessionId)
+    const session = await this.requireWritableSession(sessionId)
     await this.refreshGit(sessionId)
     const state = await this.attach(session)
     return this.#enqueue(state, async () => {
@@ -841,7 +946,7 @@ export class ExtraWorkspaceManager {
     if (this.ctx.get('forgePanel') === undefined) {
       throw new WorkspacePathError('FORGE_DISABLED', 'The forge bundle is not active; extra-worktree management is unavailable.')
     }
-    const session = this.requireSession(sessionId)
+    const session = await this.requireWritableSession(sessionId)
     const state = await this.attach(session)
     return this.#enqueue(state, async () => {
       const { record } = this.#worktreeEntry(state, entryId)
@@ -929,6 +1034,8 @@ export class ExtraWorkspaceManager {
     return {
       version: 1,
       sessionId,
+      live: true,
+      readOnly: false,
       supported: process.platform === 'win32',
       storage: this.store.persistent ? 'persistent' : 'memory',
       mode: policy.mode,

@@ -13,8 +13,11 @@ import { timingSafeEqual } from 'node:crypto'
 import { messageOf, WorkspacePathError } from './paths.js'
 import { ForgeCommandError } from './forge/run.js'
 import {
+  ColdSessionReadError,
   PermissionRepairError,
   SessionNotFoundError,
+  SessionNotLiveError,
+  SessionQueryUnavailableError,
   WorkspaceConflictError,
   WorkspaceEntryNotFoundError,
 } from './manager.js'
@@ -163,12 +166,7 @@ export function createHttpController({ ctx, manager, token, version }) {
       if (route === '/state' && req.method === 'GET') {
         const sessionId = url.searchParams.get('sessionId')
         if (sessionId === null || sessionId === '') throw new HttpError(400, 'INVALID_ARGUMENT', 'sessionId is required.')
-        await manager.attachById(sessionId)
-        if (url.searchParams.get('refresh') === '1') {
-          sendJson(res, 200, await manager.refreshGit(sessionId))
-        } else {
-          sendJson(res, 200, manager.publicState(sessionId))
-        }
+        sendJson(res, 200, await manager.stateById(sessionId, url.searchParams.get('refresh') === '1'))
         return
       }
 
@@ -270,6 +268,18 @@ export function createHttpController({ ctx, manager, token, version }) {
       }
       if (error instanceof SessionNotFoundError) {
         sendJson(res, 404, { error: error.message, code: error.code })
+        return
+      }
+      if (error instanceof SessionNotLiveError) {
+        sendJson(res, 409, { error: error.message, code: error.code })
+        return
+      }
+      if (error instanceof SessionQueryUnavailableError) {
+        sendJson(res, 503, { error: error.message, code: error.code })
+        return
+      }
+      if (error instanceof ColdSessionReadError) {
+        sendJson(res, 503, { error: error.message, code: error.code })
         return
       }
       ctx.logger?.warn?.(`dsh-extraworkspace: panel request failed: ${String(error)}\n${error instanceof Error && error.stack ? error.stack : ''}`)

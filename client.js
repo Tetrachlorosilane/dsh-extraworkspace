@@ -28,6 +28,7 @@ window.__ModuleLoader__.load({
       modeReadOnly: 'read-only',
       modeWorkspaceWrite: 'workspace-write',
       modeDanger: 'danger-full-access',
+      modeUnknown: 'not recorded',
       saved: 'Configured workspaces',
       refresh: 'Refresh',
       loading: 'Loading…',
@@ -104,6 +105,9 @@ window.__ModuleLoader__.load({
       errorPathInvalid: 'The directory address is invalid.',
       browseUnavailable: 'The host has no directory picker.',
       sessionMissing: 'The session is not available.',
+      sessionNotLive: 'This Session is not active. Its saved extra workspaces are shown read-only; reopen the conversation before changing them.',
+      sessionQueryUnavailable: 'Saved Session metadata is unavailable because sessionQuery is not mounted.',
+      sessionReadFailed: 'The saved Session could not be read.',
       previewFailed: 'Cannot use this directory: {error}',
       loadFailedShort: 'Configuration unavailable.',
       unknownError: 'Unknown error',
@@ -161,6 +165,7 @@ window.__ModuleLoader__.load({
       modeReadOnly: '只读',
       modeWorkspaceWrite: '工作区可写',
       modeDanger: '完全访问',
+      modeUnknown: '未记录',
       saved: '已配置的工作区',
       refresh: '刷新',
       loading: '读取中…',
@@ -237,6 +242,9 @@ window.__ModuleLoader__.load({
       errorPathInvalid: '目录地址无效。',
       browseUnavailable: '宿主没有目录选择器。',
       sessionMissing: '会话不可用。',
+      sessionNotLive: '此会话当前未激活。已保存的额外工作区以只读方式显示；请重新打开会话后再修改。',
+      sessionQueryUnavailable: '当前组合未挂载 sessionQuery，无法读取已保存会话的元数据。',
+      sessionReadFailed: '无法读取已保存的会话。',
       previewFailed: '无法使用该目录：{error}',
       loadFailedShort: '配置不可用。',
       unknownError: '未知错误',
@@ -885,6 +893,9 @@ window.__ModuleLoader__.load({
       DUPLICATE: 'errorDuplicate',
       ENTRY_NOT_FOUND: 'errorEntryMissing',
       SESSION_NOT_FOUND: 'sessionMissing',
+      SESSION_NOT_LIVE: 'sessionNotLive',
+      SESSION_QUERY_UNAVAILABLE: 'sessionQueryUnavailable',
+      SESSION_READ_FAILED: 'sessionReadFailed',
       UNAUTHORIZED: 'errorUnauthorized',
       LOCAL_ONLY: 'errorLocalOnly',
       APPLY_FAILED: 'errorApplyFailed',
@@ -1060,7 +1071,8 @@ window.__ModuleLoader__.load({
       return badges
     }
 
-    function RootRow({ root, t, mode, busy, confirmRemove, setConfirmRemove, confirmRepair, setConfirmRepair, onToggle, onRemove, onRetry, onRepair }) {
+    function RootRow({ root, t, mode, readOnly = false, busy, confirmRemove, setConfirmRemove, confirmRepair, setConfirmRepair, onToggle, onRemove, onRetry, onRepair }) {
+      const locked = busy !== '' || readOnly
       const showRetry = root.enabled && (root.status.state === 'error' || root.status.state === 'partial' || root.status.state === 'missing')
       const showRepair = root.enabled && root.status.processes === 'error'
       const accessDenied = showRepair && /Win32 5|access denied|拒绝访问|ACCESS_DENIED/iu.test(root.status.error ?? '')
@@ -1084,13 +1096,13 @@ window.__ModuleLoader__.load({
                 h('button', {
                   type: 'button',
                   className: 'dsh-xw-btn dsh-xw-btn-primary',
-                  disabled: busy !== '',
+                  disabled: locked,
                   onClick: () => onRepair(root),
                 }, t('fixPermissionsConfirm')),
                 h('button', {
                   type: 'button',
                   className: 'dsh-xw-btn',
-                  disabled: busy !== '',
+                  disabled: locked,
                   onClick: () => setConfirmRepair(''),
                 }, t('cancel'))))
             : null),
@@ -1102,13 +1114,13 @@ window.__ModuleLoader__.load({
             'aria-checked': root.enabled,
             'aria-label': root.label || basename(root.path),
             title: root.enabled ? t('disable') : t('enable'),
-            disabled: busy !== '',
+            disabled: locked,
             onClick: () => onToggle(root),
           }),
           showRepair ? h('button', {
             type: 'button',
             className: 'dsh-xw-btn',
-            disabled: busy !== '',
+            disabled: locked,
             onClick: () => setConfirmRepair(root.id),
           }, t('fixPermissions')) : null,
           showRetry ? h('button', {
@@ -1116,7 +1128,7 @@ window.__ModuleLoader__.load({
             className: 'dsh-xw-icon-btn',
             title: t('retry'),
             'aria-label': t('retry'),
-            disabled: busy !== '',
+            disabled: locked,
             onClick: () => onRetry(root),
           }, h(IconRefresh, null)) : null,
           confirmRemove === root.id
@@ -1124,13 +1136,13 @@ window.__ModuleLoader__.load({
               h('button', {
                 type: 'button',
                 className: 'dsh-xw-btn dsh-xw-btn-danger',
-                disabled: busy !== '',
+                disabled: locked,
                 onClick: () => onRemove(root),
               }, t('confirm')),
               h('button', {
                 type: 'button',
                 className: 'dsh-xw-btn',
-                disabled: busy !== '',
+                disabled: locked,
                 onClick: () => setConfirmRemove(''),
               }, t('cancel')))
             : h('button', {
@@ -1138,7 +1150,7 @@ window.__ModuleLoader__.load({
               className: 'dsh-xw-icon-btn dsh-xw-danger',
               title: t('remove'),
               'aria-label': t('remove'),
-              disabled: busy !== '',
+              disabled: locked,
               onClick: () => setConfirmRemove(root.id),
             }, h(IconTrash, null))))
     }
@@ -1192,7 +1204,9 @@ window.__ModuleLoader__.load({
         return h('div', { className: 'dsh-xw-tab' }, h('div', { className: 'dsh-xw-empty' }, t('sessionMissing')))
       }
       const roots = state?.roots ?? []
+      const readOnly = state?.readOnly === true
       const createWorktree = async (root) => {
+        if (readOnly) return
         setBusy('create:' + root.id)
         setActionError('')
         setNotice('')
@@ -1219,6 +1233,7 @@ window.__ModuleLoader__.load({
         }
       }
       const removeWorktree = async (root, worktree) => {
+        if (readOnly) return
         if (confirmRemove !== worktree.id) {
           setConfirmRemove(worktree.id)
           return
@@ -1241,8 +1256,9 @@ window.__ModuleLoader__.load({
           setBusy('')
         }
       }
-      const canCreate = (root) => root.enabled && root.kind === 'git-repo' && root.git?.isRepositoryRoot === true
+      const canCreate = (root) => !readOnly && root.enabled && root.kind === 'git-repo' && root.git?.isRepositoryRoot === true
       const setRetain = async (checked) => {
+        if (readOnly) return
         setBusy('retain')
         setActionError('')
         setNotice('')
@@ -1268,13 +1284,14 @@ window.__ModuleLoader__.load({
             onClick: () => { void load(true) },
           }, h(IconRefresh, null), t('forgeTabRefresh'))),
         h('p', { className: 'dsh-xw-tab-intro' }, t('forgeTabIntro')),
+        readOnly ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'warn' }, t('sessionNotLive')) : null,
         state === null
           ? h('div', { className: 'dsh-xw-loading' }, loading ? t('forgeTabLoading') : t('loadFailedShort'))
           : h(React.Fragment, null,
             h('div', { className: 'dsh-xw-tab-card' },
               h('div', { className: 'dsh-xw-tab-meta' },
                 h('strong', null, t('forgeTabRoot')),
-                h(Badge, { tone: 'muted' }, state.mode)),
+                h(Badge, { tone: 'muted' }, state.mode ?? t('modeUnknown')),
               h('div', { className: 'dsh-xw-tab-path', title: state.workspaceRoot }, state.workspaceRoot),
               h('div', { className: 'dsh-xw-tab-note' }, t('forgeTabRootNote'))),
             roots.length === 0
@@ -1296,7 +1313,7 @@ window.__ModuleLoader__.load({
                           value: name,
                           placeholder: t('forgeTabNamePlaceholder'),
                           spellCheck: false,
-                          disabled: busy !== '',
+                          disabled: readOnly || busy !== '',
                           onChange: (event) => setName(event.target.value),
                         })),
                       h('label', { className: 'dsh-xw-field' },
@@ -1306,27 +1323,27 @@ window.__ModuleLoader__.load({
                           value: from,
                           placeholder: t('forgeTabFromPlaceholder'),
                           spellCheck: false,
-                          disabled: busy !== '',
+                          disabled: readOnly || busy !== '',
                           onChange: (event) => setFrom(event.target.value),
                         })),
                       h('div', { className: 'dsh-xw-form-actions' },
                         h('button', {
                           type: 'button',
                           className: 'dsh-xw-btn dsh-xw-btn-primary',
-                          disabled: busy !== '',
+                          disabled: readOnly || busy !== '',
                           onClick: () => { void createWorktree(root) },
                         }, busy === 'create:' + root.id ? t('forgeTabCreating') : t('forgeTabCreate')),
                         h('button', {
                           type: 'button',
                           className: 'dsh-xw-btn',
-                          disabled: busy !== '',
+                          disabled: readOnly || busy !== '',
                           onClick: () => { setFormFor(''); setName(''); setFrom('') },
                         }, t('forgeTabCancel'))))
                     : h('div', { className: 'dsh-xw-tab-actions' },
                       h('button', {
                         type: 'button',
                         className: 'dsh-xw-btn',
-                        disabled: busy !== '',
+                        disabled: readOnly || busy !== '',
                         onClick: () => { setFormFor(root.id); setName(''); setFrom(''); setActionError('') },
                       }, h(IconPlus, null), t('forgeTabAddWorktree'))))
                   : root.kind === 'git-repo' || root.kind === 'git-worktree'
@@ -1341,7 +1358,7 @@ window.__ModuleLoader__.load({
                         h('button', {
                           type: 'button',
                           className: 'dsh-xw-tab-inline-btn',
-                          disabled: busy !== '',
+                          disabled: readOnly || busy !== '',
                           onClick: () => { void removeWorktree(root, worktree) },
                         }, confirmRemove === worktree.id ? t('forgeTabConfirmRemove') : t('forgeTabRemove'))))))
                   : canCreate(root) && formFor === '' ? h('div', { className: 'dsh-xw-tab-note' }, t('forgeTabNoWorktrees')) : null)),
@@ -1349,7 +1366,7 @@ window.__ModuleLoader__.load({
               h('input', {
                 type: 'checkbox',
                 checked: state.retainWorktreesOnArchive === true,
-                disabled: busy !== '',
+                disabled: readOnly || busy !== '',
                 onChange: (event) => { void setRetain(event.target.checked) },
               }),
               h('span', null, t('forgeTabRetain'))),
@@ -1663,12 +1680,14 @@ window.__ModuleLoader__.load({
       if (sessionId === undefined || sessionId === null) return null
 
       const count = state?.roots?.filter((root) => root.enabled).length ?? 0
+      const readOnly = state?.readOnly === true
       const previewBlocked = preview !== null && (preview.ok === false || preview.duplicate !== null)
       const modeLabel = state === null
         ? ''
         : state.mode === 'read-only' ? t('modeReadOnly')
           : state.mode === 'danger-full-access' ? t('modeDanger')
-            : t('modeWorkspaceWrite')
+            : state.mode === 'workspace-write' ? t('modeWorkspaceWrite')
+              : t('modeUnknown')
 
       const button = h('button', {
         type: 'button',
@@ -1725,6 +1744,7 @@ window.__ModuleLoader__.load({
           : null,
 
         state !== null && state.supported === false ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'warn' }, t('unsupported')) : null,
+        state !== null && readOnly ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'warn' }, t('sessionNotLive')) : null,
         state !== null && state.mode === 'read-only' ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'warn' }, t('readOnlyWarning')) : null,
         state !== null && state.mode === 'danger-full-access' ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'muted' }, t('dangerNotice')) : null,
         state !== null && state.storage === 'memory' ? h('div', { className: 'dsh-xw-notice', 'data-kind': 'warn' }, t('memoryWarning')) : null,
@@ -1758,6 +1778,7 @@ window.__ModuleLoader__.load({
                   root,
                   t,
                   mode: state.mode,
+                  readOnly,
                   busy,
                   confirmRemove,
                   setConfirmRemove,
@@ -1781,7 +1802,7 @@ window.__ModuleLoader__.load({
                   value: input,
                   placeholder: t('pathPlaceholder'),
                   spellCheck: false,
-                  disabled: state === null || busy !== '',
+                  disabled: state === null || readOnly || busy !== '',
                   autoComplete: 'off',
                   onChange: (event) => {
                     previewSeq.current += 1
@@ -1800,7 +1821,7 @@ window.__ModuleLoader__.load({
                   type: 'button',
                   className: 'dsh-xw-btn',
                   onClick: () => { void browse() },
-                  disabled: state === null || busy !== '',
+                  disabled: state === null || readOnly || busy !== '',
                 }, t('browse')))),
             h('label', { className: 'dsh-xw-field' },
               h('span', { className: 'dsh-xw-field-label' }, t('labelLabel')),
@@ -1809,7 +1830,7 @@ window.__ModuleLoader__.load({
                 value: label,
                 placeholder: t('labelPlaceholder'),
                 maxLength: 200,
-                disabled: state === null || busy !== '',
+                disabled: state === null || readOnly || busy !== '',
                 onChange: (event) => setLabel(event.target.value),
               })),
             h('div', { className: 'dsh-xw-form-actions' },
@@ -1817,7 +1838,7 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: 'dsh-xw-btn dsh-xw-btn-primary',
                 onClick: () => { void add() },
-                disabled: state === null || busy !== '' || input.trim() === '' || previewBlocked,
+                disabled: state === null || readOnly || busy !== '' || input.trim() === '' || previewBlocked,
               }, busy === 'add' ? t('adding') : h(IconPlus, null), busy === 'add' ? null : t('add')),
               h('span', { className: 'dsh-xw-hint' }, t('pathHint')))),
           previewBusy
