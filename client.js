@@ -1291,7 +1291,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'dsh-xw-tab-card' },
               h('div', { className: 'dsh-xw-tab-meta' },
                 h('strong', null, t('forgeTabRoot')),
-                h(Badge, { tone: 'muted' }, state.mode ?? t('modeUnknown')),
+                h(Badge, { tone: 'muted' }, state.mode ?? t('modeUnknown'))),
               h('div', { className: 'dsh-xw-tab-path', title: state.workspaceRoot }, state.workspaceRoot),
               h('div', { className: 'dsh-xw-tab-note' }, t('forgeTabRootNote'))),
             roots.length === 0
