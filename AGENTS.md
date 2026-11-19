@@ -45,6 +45,7 @@ Verified against DSH `0.2.2-rc.5` on Windows (Desktop profile):
 | Policy resolver | `ctx.sandboxPolicy.resolve({ session })` → `{ mode, workspaceRoot, additionalWritableRoots, sessionId }` |
 | Canonicalization | `canonicalPath(path)` in `@deepseek-ai/dsh-sandbox` (`realpathSync.native`) |
 | Session lookup | `ctx.sessions.get(id)`, live agents via `ctx.get('agents')?.list()` |
+| Cold metadata | `ctx.get('sessionQuery')?.readSession(id)` → detached header/events; no Agent activation |
 | Agent lifecycle | serial `agent/created`, emit `agent/disposed` |
 | Persistence | `ctx.storageDomain.open(extraWorkspaceDomain)`; domain `extra_workspaces`, table `sessions`, `per-record` layout |
 | Client slot | `conversation.session.header.utilities` (list, session scope, id/order/label registration) |
